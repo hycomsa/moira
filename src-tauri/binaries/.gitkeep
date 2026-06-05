@@ -1,0 +1,2 @@
+# Tauri externalBin sidecars (moira-sidecar-<target-triple>[.exe]) are built in CI
+# by PyInstaller and dropped here before `tauri build`. The binaries are gitignored.

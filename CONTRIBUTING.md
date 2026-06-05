@@ -63,6 +63,32 @@ The backend loads the plugin *for that run only* via `claude --plugin-dir` (role
 so every other run — `dev@*`, discovery, eval, compliance — is untouched. With the env var unset,
 behaviour is unchanged. Heavy coding roles get a larger turn/time budget automatically.
 
+## Releases (macOS / Windows / Linux)
+
+Releases are produced by `.github/workflows/release.yml` — **push a tag `v*`** (e.g. `v0.1.0`) and CI
+builds installers for all platforms and publishes them (+ updater `latest.json`) to this repo's
+**Releases**. In-app auto-update is enabled.
+
+**How the Python dependency ships:** the orchestrator (zero-dep stdlib) is frozen with **PyInstaller**
+into a single self-contained binary per OS/arch — with the built cockpit `dist` embedded — and bundled
+as a Tauri **`externalBin`** sidecar. End users need **no system Python**. (Real agent backends still need
+the `claude` CLI installed; `mock` works offline.) macOS ships **per-arch** (arm64 + Intel) because
+PyInstaller can't cross-compile a universal binary.
+
+Required GitHub secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` (+ `_PASSWORD`) | signs updater artifacts (`tauri signer generate`; public key is in `tauri.conf.json`) |
+| `APPLE_CERTIFICATE` (+ `_PASSWORD`) | Developer ID cert (`.p12`, base64) for macOS signing |
+| `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID` | macOS code-signing identity |
+| `APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_CONTENT` | App Store Connect API key for notarization |
+
+Windows installers are currently unsigned (SmartScreen will warn) — add a code-signing cert later if needed.
+
+**Cut a release:** bump `version` in `src-tauri/tauri.conf.json` (and optionally `cockpit/package.json`),
+commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Watch the **Actions** tab.
+
 ## Conventions
 
 - Keep the orchestrator **dependency-free** (stdlib only) — it ships as the sidecar.

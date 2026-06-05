@@ -1,0 +1,154 @@
+# Build Moira for Linux / Windows / macOS and publish installers (+ updater
+# latest.json) to this repo's Releases. Trigger: push a git tag `v*` (e.g. v0.1.0).
+#
+# The Python orchestrator is frozen with PyInstaller into a self-contained sidecar
+# binary per OS/arch (Tauri externalBin) — end users need no system Python.
+#
+# Secrets (repo → Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY            updater signing private key (tauri signer generate)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   only if the key has a password
+#   APPLE_CERTIFICATE / _PASSWORD        Developer ID cert (.p12 base64) + its password
+#   APPLE_SIGNING_IDENTITY               e.g. "Developer ID Application: Hycom S.A. (TEAMID)"
+#   APPLE_TEAM_ID
+#   APPLE_API_KEY / APPLE_API_ISSUER / APPLE_API_KEY_CONTENT   App Store Connect API (notarization)
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: "--bundles appimage"
+          - platform: windows-latest
+            args: "--bundles nsis"
+          - platform: macos-14
+            args: "--target aarch64-apple-darwin"
+            rust_target: aarch64-apple-darwin
+          - platform: macos-13
+            args: "--target x86_64-apple-darwin"
+            rust_target: x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System deps (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf build-essential curl libssl-dev pkg-config
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cockpit/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target || '' }}
+
+      - name: Cache Cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Build cockpit
+        run: |
+          npm ci --prefix cockpit
+          npm run build --prefix cockpit
+
+      - name: Freeze Python sidecar (PyInstaller)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          pyinstaller orchestrator/moira-sidecar.spec --distpath dist --workpath build_pyi
+          TRIPLE="${{ matrix.rust_target }}"
+          [ -z "$TRIPLE" ] && TRIPLE="$(rustc -vV | sed -n 's/host: //p')"
+          mkdir -p src-tauri/binaries
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            mv dist/moira-sidecar.exe "src-tauri/binaries/moira-sidecar-$TRIPLE.exe"
+          else
+            mv dist/moira-sidecar "src-tauri/binaries/moira-sidecar-$TRIPLE"
+            chmod +x "src-tauri/binaries/moira-sidecar-$TRIPLE"
+          fi
+          ls -la src-tauri/binaries/
+
+      - name: Import Apple certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm certificate.p12
+
+      - name: App Store Connect API key (macOS, notarization)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> "$GITHUB_ENV"
+          if printf '%s' "$APPLE_API_KEY_CONTENT" | head -c 27 | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
+          else
+            printf '%s' "$APPLE_API_KEY_CONTENT" | openssl base64 -d -A > "$APPLE_API_KEY_PATH"
+          fi
+          chmod 600 "$APPLE_API_KEY_PATH"
+
+      - name: Build & publish to Releases
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Moira ${{ github.ref_name }}"
+          releaseBody: |
+            Moira — AI-native SDLC cockpit. Installers for Linux (AppImage),
+            Windows (NSIS) and macOS (Apple Silicon + Intel).
+            In-app auto-update is enabled. Real agent backends need the `claude`
+            CLI installed; the `mock` backend works offline.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}

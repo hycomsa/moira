@@ -33,3 +33,8 @@ src-tauri/gen/
 
 # build info
 *.tsbuildinfo
+
+# PyInstaller (sidecar freeze) — built in CI, never committed
+/build/
+*.manifest
+src-tauri/binaries/moira-sidecar-*

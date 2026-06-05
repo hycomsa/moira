@@ -785,10 +785,19 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv=None) -> int:
     global REPO, STATIC
+    # When frozen by PyInstaller (the bundled desktop sidecar) there is no source
+    # tree: serve the cockpit dist embedded in the bundle and don't assume a repo.
+    frozen = getattr(sys, "frozen", False)
+    default_static = None
+    if frozen:
+        cand = Path(getattr(sys, "_MEIPASS", ".")) / "cockpit_dist"
+        if cand.is_dir():
+            default_static = str(cand)
+    default_repo = "" if frozen else str(Path(__file__).parent.parent.parent / "ai-sdlc")
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=8765)
-    p.add_argument("--repo", default=str(Path(__file__).parent.parent.parent / "ai-sdlc"))
-    p.add_argument("--static", default=None)
+    p.add_argument("--repo", default=default_repo)
+    p.add_argument("--static", default=default_static)
     args = p.parse_args(argv)
     REPO = args.repo
     STATIC = args.static

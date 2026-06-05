@@ -18,6 +18,16 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png"],
+    "externalBin": ["binaries/moira-sidecar"],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/hycomsa/moira/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5OUQ3NTNDMkRGMDJCQTEKUldTaEsvQXRQSFdkbVlONWdNVjZiZS95VGF4ZXZxOWhzVzM1S1Fka3BwbXlscEd0a0liNWNIcTIK"
+    }
   }
 }
