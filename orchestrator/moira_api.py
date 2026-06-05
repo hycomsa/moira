@@ -18,8 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
+import threading
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -37,6 +40,46 @@ from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
 DB = os.environ.get("MOIRA_DB", ".moira/moira.sqlite")
 REPO = None
 STATIC = None
+LOG_PATH = None
+log = logging.getLogger("moira")
+
+
+def setup_logging() -> None:
+    """Log to a file (MOIRA_LOG, default next to the DB) AND stdout, so the desktop
+    app has a logfile and `run-cockpit.sh` shows live events in the terminal."""
+    global LOG_PATH
+    LOG_PATH = os.environ.get("MOIRA_LOG") or str(Path(DB).resolve().parent / "moira.log")
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    log.setLevel(logging.INFO)
+    log.handlers.clear()
+    try:
+        Path(LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(LOG_PATH)
+        fh.setFormatter(fmt)
+        log.addHandler(fh)
+    except OSError:
+        LOG_PATH = None
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    log.addHandler(sh)
+
+
+def background(owner: str, fn) -> None:
+    """Drive a run OFF the request thread so the HTTP call returns immediately
+    (the cockpit then polls). The thread uses its OWN Store + Engine (SQLite is
+    per-thread). Exceptions are logged, never crash the server."""
+    def _run():
+        store = open_store()
+        try:
+            res = fn(Engine(store, registry(), owner=owner))
+            rid = getattr(res, "run_id", "?")
+            status = getattr(getattr(res, "status", None), "value", res)
+            log.info("run %s -> %s", rid, status)
+        except Exception:  # noqa: BLE001
+            log.error("background run failed:\n%s", traceback.format_exc())
+        finally:
+            store.close()
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def open_store():
@@ -407,8 +450,18 @@ class Handler(BaseHTTPRequestHandler):
                 git_on = os.environ.get("MOIRA_GIT_EXPORT", "0") not in ("", "0", "false", "False")
                 persistence = primary + (" + git" if git_on else "")
                 return self._send(200, {"ok": True, "backends": registry().available(),
-                                        "repo": REPO, "persistence": persistence,
+                                        "repo": REPO, "persistence": persistence, "log": LOG_PATH,
                                         "claude": ClaudeCodeBackend().available(), "version": "0.1"})
+            if path == "/api/logs":
+                n = int((parse_qs(parsed.query).get("tail", ["200"])[0]) or 200)
+                text = ""
+                try:
+                    if LOG_PATH and os.path.exists(LOG_PATH):
+                        with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+                            text = "".join(f.readlines()[-n:])
+                except OSError:
+                    pass
+                return self._send(200, {"path": LOG_PATH, "log": text})
             if path == "/api/workspaces":
                 return self._send(200, {"workspaces": store.list_workspaces()})
             if path == "/api/runs":
@@ -618,10 +671,11 @@ class Handler(BaseHTTPRequestHandler):
                 code = ws_code_path(store, ws_id)  # real coding: agents write here (cwd)
                 if code:
                     ctx["cwd"] = code
-                engine = Engine(store, registry(), owner=owner)
-                res = engine.start(pipe, ctx, workspace_id=ws_id)
-                return self._send(201, {"run_id": res.run_id, "status": res.status.value,
-                                        "waiting_node": res.waiting_node})
+                run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
+                log.info("launch run %s func=%s pipeline=%s backend=%s owner=%s",
+                         run_id, func_id, pipe.id, body.get("backend", "mock"), owner)
+                background(owner, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
+                return self._send(201, {"run_id": run_id, "status": "running", "waiting_node": None})
             if path.startswith("/api/runs/") and path.endswith("/report"):
                 from moira_core.report import render_run_report
                 from moira_core.git_sink import GitExportSink
@@ -736,17 +790,17 @@ class Handler(BaseHTTPRequestHandler):
                 pipe = Pipeline(id=pid, name=name, nodes=nodes)
                 ctx = context_for(steps[0].get("input", ""), ws_repo(store, ws_id))
                 ctx["cwd"] = ws_repo(store, ws_id)  # author INTO the AI SDLC repo, not code
-                engine = Engine(store, registry(), owner=owner)
-                res = engine.start(pipe, ctx, workspace_id=ws_id)
-                return self._send(201, {"run_id": res.run_id, "status": res.status.value,
-                                        "waiting_node": res.waiting_node})
+                run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
+                log.info("launch discovery %s steps=%s owner=%s",
+                         run_id, [s["skill"] for s in steps], owner)
+                background(owner, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
+                return self._send(201, {"run_id": run_id, "status": "running", "waiting_node": None})
             if path.endswith("/approve") or path.endswith("/reject"):
                 run_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
                 run = store.get_run(run_id)
                 if not run:
                     return self._send(404, {"error": "not found"})
                 pipe = Pipeline.from_dict(json.loads(run["pipeline"]))
-                engine = Engine(store, registry(), owner=run["owner"])
                 if path.endswith("/approve"):
                     dec = GateDecision(decision="approve", by=body.get("by", "human"),
                                        confirmed=body.get("confirm", "approved via cockpit"))
@@ -763,9 +817,9 @@ class Handler(BaseHTTPRequestHandler):
                 code = ws_code_path(store, run_ws)
                 if code:
                     ctx["cwd"] = code
-                res = engine.resume(run_id, pipe, ctx, dec)
-                return self._send(200, {"run_id": res.run_id, "status": res.status.value,
-                                        "waiting_node": res.waiting_node})
+                log.info("gate %s %s by %s", run_id, dec.decision, dec.by)
+                background(run["owner"], lambda e, p=pipe, c=ctx, d=dec, r=run_id: e.resume(r, p, c, d))
+                return self._send(200, {"run_id": run_id, "status": "running", "waiting_node": None})
             if path == "/api/gate/simulate":
                 cfg = GateConfig(mode=GateMode.HYBRID,
                                  high_cutoff=float(body.get("high_cutoff", 0.85)),
@@ -801,8 +855,11 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     REPO = args.repo
     STATIC = args.static
+    setup_logging()
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Moira API on http://127.0.0.1:{args.port}  repo={REPO}  static={STATIC}")
+    log.info("Moira API on http://127.0.0.1:%s  repo=%s  static=%s  log=%s",
+             args.port, REPO, STATIC, LOG_PATH)
+    print(f"Moira API on http://127.0.0.1:{args.port}  repo={REPO}  static={STATIC}  log={LOG_PATH}")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

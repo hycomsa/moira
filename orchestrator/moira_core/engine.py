@@ -57,15 +57,29 @@ class Engine:
         self.owner = owner
 
     # ---- public API -------------------------------------------------------- #
-    def start(self, pipeline: Pipeline, context: dict[str, Any],
-              workspace_id: str = "default") -> RunResult:
+    def create(self, pipeline: Pipeline, context: dict[str, Any],
+               workspace_id: str = "default") -> str:
+        """Seed a run (row + RUNNING + initial state + run.start event) WITHOUT driving.
+        Fast + synchronous — lets a caller return the run_id immediately and drive the
+        slow agent work off-thread via `drive_existing` (see moira_api.background())."""
         run_id = new_id("run-")
         self.store.create_run(run_id, pipeline.id, pipeline.to_dict(),
                               self.owner, Status.RUNNING.value, workspace_id=workspace_id)
         self._event(run_id, "run.start", f"Run started: pipeline '{pipeline.name}' by {self.owner}")
-        state = {n.id: PENDING for n in pipeline.nodes}
-        self.store.save_run_state(run_id, state)
+        self.store.save_run_state(run_id, {n.id: PENDING for n in pipeline.nodes})
+        return run_id
+
+    def drive_existing(self, run_id: str, pipeline: Pipeline,
+                       context: dict[str, Any]) -> RunResult:
+        """Drive a previously-`create`d run from its persisted state (the slow part)."""
+        state = self.store.get_run_state(run_id) or {n.id: PENDING for n in pipeline.nodes}
         return self._drive(run_id, pipeline, context, state)
+
+    def start(self, pipeline: Pipeline, context: dict[str, Any],
+              workspace_id: str = "default") -> RunResult:
+        """Synchronous create + drive (CLI / tests / synchronous callers)."""
+        run_id = self.create(pipeline, context, workspace_id)
+        return self.drive_existing(run_id, pipeline, context)
 
     def resume(self, run_id: str, pipeline: Pipeline, context: dict[str, Any],
                decision: GateDecision) -> RunResult:

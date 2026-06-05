@@ -217,6 +217,8 @@ export const api = {
     POST("/api/eval", { owner: _user.name, kind: "compliance", references, ...opts, workspace_id: activeWs }),
   regulations: (): Promise<{ regulations: Regulation[] }> => fetch(ws("/api/regulations")).then(j),
   spend: (): Promise<SpendRollup> => fetch(ws("/api/spend")).then(j),
+  logs: (tail = 400): Promise<{ path: string | null; log: string }> =>
+    fetch(u(`/api/logs?tail=${tail}`)).then(j),
 };
 
 // per-workspace monthly budget (alert-only v1; kept client-side like the profile)

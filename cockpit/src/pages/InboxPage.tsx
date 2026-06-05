@@ -28,6 +28,7 @@ function DecisionCard({ it, codePath, onDecided }: {
   const [det, setDet] = useState<RunDetail | null | undefined>(undefined);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
   const [artifact, setArtifact] = useState<Artifact | null>(null);
 
   useEffect(() => { api.run(it.run_id).then(setDet).catch(() => setDet(null)); }, [it.run_id]);
@@ -51,12 +52,17 @@ function DecisionCard({ it, codePath, onDecided }: {
   }, [det, audit]);
 
   const decide = async (kind: "approve" | "reject") => {
-    setBusy(true);
+    setBusy(true); setMsg("");
     try {
       if (kind === "approve") await api.approve(it.run_id, approver(), note || "Reviewed and accepted");
-      else await api.reject(it.run_id, approver(), note);
-    } finally { setBusy(false); }
-    onDecided();
+      else await api.reject(it.run_id, approver(), note || "Sent back for rework");
+      setMsg(kind === "approve" ? "✓ Approved — continuing the run…" : "↩ Sent back for rework — re-running the step…");
+      onDecided();
+    } catch (e) {
+      setMsg("⚠ Action failed: " + String((e as Error)?.message || e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -136,9 +142,10 @@ function DecisionCard({ it, codePath, onDecided }: {
       <div className="review-label" style={{ marginTop: 14 }}>Decision note <span className="muted">(recorded in the audit)</span></div>
       <textarea className="gate-note" placeholder={isClient ? "What you approve / what to change…" : "What did you verify? / feedback for rework…"}
                 value={note} onChange={(e) => setNote(e.target.value)} />
+      {msg && <div className={"dc-banner " + (msg.startsWith("⚠") ? "warn" : "ok")} style={{ marginTop: 10 }}>{msg}</div>}
       <div className="dc-actions">
-        <Button variant="success" disabled={busy} onClick={() => decide("approve")}>✓ Approve</Button>
-        <Button variant="danger" disabled={busy} onClick={() => decide("reject")}>↩ Reject &amp; rework</Button>
+        <Button variant="success" disabled={busy} onClick={() => decide("approve")}>{busy ? "…" : "✓ Approve"}</Button>
+        <Button variant="danger" disabled={busy} onClick={() => decide("reject")}>{busy ? "…" : "↩ Reject & rework"}</Button>
       </div>
       {artifact && <ArtifactModal artifact={artifact} onClose={() => setArtifact(null)} onOpen={viewArtifact} />}
     </div>

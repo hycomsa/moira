@@ -89,6 +89,26 @@ Windows installers are currently unsigned (SmartScreen will warn) — add a code
 **Cut a release:** bump `version` in `src-tauri/tauri.conf.json` (and optionally `cockpit/package.json`),
 commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Watch the **Actions** tab.
 
+## Debugging / logs
+
+Runs launch **non-blocking**: `POST /api/runs`, `/api/discovery`, and gate approve/reject return a
+`run_id` immediately and drive the pipeline on a background thread — the cockpit then streams progress
+(Runs/Inbox poll every ~2.5 s). So a real `claude` step no longer freezes the "Start"/decision button.
+
+Where to look when something misbehaves:
+- **Live, per run:** open **Runs**, select the run → execution plan (per-node status) + a streaming
+  activity log. Node failures show as `retry` / `node.escalate` events carrying the error (e.g. `claude`
+  stderr or timeout).
+- **Across runs:** the **Activity** page → **Events** tab (all runs) and **Sidecar logs** tab (the
+  orchestrator logfile, tailed live).
+- **Logfile on disk:** `MOIRA_LOG` (default next to `MOIRA_DB` → `<app-data>/moira.log` in the desktop
+  app; the path is also in `GET /api/health` and `GET /api/logs?tail=N`).
+- **Dev:** run `./run-cockpit.sh` (or `python3 orchestrator/moira_api.py …`) in a terminal — the sidecar
+  logs to stdout there too. For the UI, use the Tauri webview devtools.
+
+Note: `POST /api/eval` (quality/conformance/compliance scorecards) is intentionally **synchronous** — it
+returns the scorecard in the response, so that call does block until the judge finishes.
+
 ## Conventions
 
 - Keep the orchestrator **dependency-free** (stdlib only) — it ships as the sidecar.
