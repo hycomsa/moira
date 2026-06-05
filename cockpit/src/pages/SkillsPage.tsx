@@ -38,7 +38,7 @@ const PRESETS: Preset[] = [
             { skill: "ba@review-func-spec-arch", persona: "architect" }] },
 ];
 
-export function SkillsPage() {
+export function SkillsPage({ onOpenRun }: { onOpenRun?: (runId: string) => void } = {}) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
@@ -64,8 +64,9 @@ export function SkillsPage() {
     if (!run) return; setBusy(true); setMsg("");
     try {
       const res = await api.runDiscovery({ skill: run.name, input, elaboration: elab, persona });
-      setMsg(`Started ${res.run_id.replace("run-", "")} — running. Watch it in Runs/Activity; the review gate appears in the Inbox when ready.`);
       setRun(null); setInput(""); setElab("");
+      if (onOpenRun) onOpenRun(res.run_id);  // jump straight to the run's details
+      else setMsg(`Started ${res.run_id.replace("run-", "")} — running. Watch it in Runs/Activity.`);
     } catch (e) { setMsg(String((e as Error)?.message || e)); }
     setBusy(false);
   };
@@ -77,8 +78,9 @@ export function SkillsPage() {
       // only the first step gets the topic; later steps inherit the prior step's artifact id
       const steps = pSteps.map((s, i) => ({ skill: s.skill, input: i === 0 ? pTopic : "", elaboration: pElab, persona: s.persona }));
       const res = await api.runDiscoveryPipeline(steps, pipe.name);
-      setMsg(`Started pipeline ${res.run_id.replace("run-", "")} — running. Watch it in Runs/Activity; the first gate appears in the Inbox when ready.`);
       setPipe(null);
+      if (onOpenRun) onOpenRun(res.run_id);  // jump straight to the run's details
+      else setMsg(`Started pipeline ${res.run_id.replace("run-", "")} — running. Watch it in Runs/Activity.`);
     } catch (e) { setMsg(String((e as Error)?.message || e)); }
     setBusy(false);
   };

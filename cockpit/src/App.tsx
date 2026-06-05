@@ -38,6 +38,7 @@ const initialView = (): View => {
 
 export function App() {
   const [view, setView] = useState<View>(initialView);
+  const [focusRun, setFocusRun] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWs, setActiveWs] = useState("default");
@@ -65,6 +66,9 @@ export function App() {
     const t = setInterval(refreshInbox, 3000);
     return () => clearInterval(t);
   }, [refreshInbox, loadWorkspaces]);
+
+  // open a specific run's details from anywhere (e.g. after launching from Discovery)
+  const openRun = (id: string) => { setFocusRun(id); setView("runs"); };
 
   const switchWs = (id: string) => {
     if (id === "__new__") { setShowWizard(true); return; }
@@ -108,11 +112,11 @@ export function App() {
 
         <main className="content" key={wsKey}>
           {view === "overview" && <Overview onNavigate={(v) => setView(v as View)} />}
-          {view === "runs" && <RunsPage onDecided={refreshInbox} />}
+          {view === "runs" && <RunsPage onDecided={refreshInbox} focusRun={focusRun} />}
           {view === "inbox" && <InboxPage inbox={inbox} onDecided={refreshInbox} />}
           {view === "pipelines" && <PipelinesPage />}
           {view === "agents" && <AgentsPage />}
-          {view === "skills" && <SkillsPage />}
+          {view === "skills" && <SkillsPage onOpenRun={openRun} />}
           {view === "files" && <FilesPage />}
           {view === "trace" && <TraceabilityPage />}
           {view === "activity" && <ActivityPage />}

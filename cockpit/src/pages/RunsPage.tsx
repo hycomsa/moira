@@ -17,7 +17,7 @@ const COLOR: Record<string, string> = {
 const Dot = ({ s }: { s: string }) => <span className="dot" style={{ background: COLOR[s] ?? "#8b949e" }} />;
 const ICON = (t: string) => (t === "gate" ? "◆" : t === "verifier" ? "✓" : "●");
 
-export function RunsPage({ onDecided }: { onDecided: () => void }) {
+export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focusRun?: string | null }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
@@ -92,6 +92,8 @@ export function RunsPage({ onDecided }: { onDecided: () => void }) {
   const load = useCallback(async (id: string) => { try { setDetail(await api.run(id)); } catch { /* */ } }, []);
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 2500); return () => clearInterval(t); }, [refresh]);
+  // deep-link: when another page (e.g. Discovery) opens a specific run, select it
+  useEffect(() => { if (focusRun) { setSelected(focusRun); setStep(null); refresh(); } }, [focusRun, refresh]);
   useEffect(() => {
     api.pipelines().then((d) => { setPipelines(d.pipelines); if (d.pipelines[0]) setPipelineId(d.pipelines[0].id); }).catch(() => { /* */ });
   }, []);
