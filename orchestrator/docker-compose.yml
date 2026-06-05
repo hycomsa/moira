@@ -1,0 +1,29 @@
+# Local PostgreSQL for Moira's central run/audit store.
+#   docker compose up -d db        # start
+#   docker compose down            # stop (keeps data in the named volume)
+#   docker compose down -v         # stop + wipe data
+#
+# Then point Moira at it:
+#   export MOIRA_PRIMARY=postgres
+#   export MOIRA_PG_DSN=postgresql://moira:moira@localhost:5432/moira
+services:
+  db:
+    image: postgres:16
+    container_name: moira-postgres
+    environment:
+      POSTGRES_USER: moira
+      POSTGRES_PASSWORD: moira
+      POSTGRES_DB: moira
+    ports:
+      # Override if 5432 is taken:  MOIRA_PG_PORT=25460 docker compose up -d db
+      - "${MOIRA_PG_PORT:-5432}:5432"
+    volumes:
+      - moira_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moira -d moira"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  moira_pgdata:

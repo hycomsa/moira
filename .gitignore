@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv-pg/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node / Tauri
+node_modules/
+dist/
+src-tauri/target/
+
+# Moira local state
+*.sqlite
+*.sqlite3
+.moira/
+runs/
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Cockpit / Tauri
+cockpit/node_modules/
+cockpit/dist/
+src-tauri/target/
+src-tauri/gen/
+
+# build info
+*.tsbuildinfo

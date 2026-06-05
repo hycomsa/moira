@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f0d0c" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Moira · Gate inbox</title>
+<style>
+  :root { --bg:#0f0d0c; --panel:#1a1714; --panel2:#221d19; --border:#3a322c; --text:#f0e9e2;
+          --muted:#a89b8d; --accent:#e0723a; --accent-fg:#1a1003; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:linear-gradient(180deg,#1a1714,#0f0d0c);
+           border-bottom:1px solid var(--border); padding:max(14px,env(safe-area-inset-top)) 16px 12px;
+           display:flex; align-items:center; gap:10px; }
+  .logo { width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#e0723a,#b8501f);
+          display:grid;place-items:center;color:#fff;font-weight:800; }
+  header h1 { font-size:16px; margin:0; flex:1; } header .cnt { color:var(--muted); font-size:13px; }
+  .refresh { background:var(--panel2); border:1px solid var(--border); color:var(--text);
+             border-radius:9px; padding:7px 11px; font-size:13px; }
+  main { padding:14px; display:flex; flex-direction:column; gap:14px; max-width:640px; margin:0 auto; }
+  .empty { color:var(--muted); text-align:center; padding:60px 20px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:15px;
+          box-shadow:0 10px 30px -24px #000; }
+  .ch { display:flex; align-items:center; gap:9px; margin-bottom:8px; flex-wrap:wrap; }
+  .persona { background:color-mix(in srgb,var(--accent) 18%,transparent); color:var(--accent);
+             border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border)); border-radius:20px;
+             font-size:11px; padding:2px 10px; font-weight:600; }
+  .ws { color:var(--muted); font-size:12px; } .pipe { font-weight:700; font-size:15px; }
+  .msg { color:var(--text); font-size:14px; margin:4px 0 12px; }
+  .sec { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:10px 0 6px; }
+  .check { display:flex; align-items:center; gap:8px; font-size:13px; padding:3px 0; }
+  .dot { width:8px;height:8px;border-radius:50%; flex:none; }
+  .cname { font-weight:600; } .csum { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .meta { display:flex; gap:14px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin-top:10px;
+          border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent); padding-top:10px; }
+  .meta b { color:var(--text); } .meta .mdl { color:var(--accent); }
+  textarea { width:100%; margin-top:12px; min-height:54px; resize:vertical; background:var(--panel2);
+             border:1px solid var(--border); border-radius:10px; color:var(--text); padding:10px; font:inherit; font-size:14px; }
+  textarea:focus { outline:none; border-color:var(--accent); }
+  .acts { display:flex; gap:10px; margin-top:12px; }
+  .acts button { flex:1; border:none; border-radius:11px; padding:13px; font-size:15px; font-weight:700; }
+  .approve { background:#2ea043; color:#fff; } .reject { background:var(--panel2); color:#f85149; border:1px solid #5a2b2b !important; }
+  button:active { transform:translateY(1px); } button:disabled { opacity:.5; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--panel2);
+           border:1px solid var(--border); color:var(--text); padding:10px 16px; border-radius:12px; font-size:13px; opacity:0;
+           transition:opacity .2s; pointer-events:none; }
+  .toast.on { opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">◆</div>
+  <h1>Gate inbox</h1>
+  <span class="cnt" id="cnt"></span>
+  <button class="refresh" onclick="load()">↻</button>
+</header>
+<main id="list"><div class="empty">Loading…</div></main>
+<div class="toast" id="toast"></div>
+<script>
+const COLOR = { succeeded:"#3fb950", failed:"#f85149", waiting_gate:"#d29922", running:"#58a6ff", rejected:"#f85149", pending:"#8b949e" };
+const esc = (s) => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtTok = (n) => n>=1000 ? (n/1000).toFixed(1)+"k" : (n||0);
+const fmtDur = (s) => s==null?"—": s<60? Math.round(s)+"s" : Math.floor(s/60)+"m "+String(Math.round(s%60)).padStart(2,"0")+"s";
+let busy = false;
+
+function toast(t){ const e=document.getElementById("toast"); e.textContent=t; e.classList.add("on"); setTimeout(()=>e.classList.remove("on"),2200); }
+
+async function load(){
+  try {
+    const d = await (await fetch("/api/mobile/inbox")).json();
+    const items = d.inbox || [];
+    document.getElementById("cnt").textContent = items.length ? items.length+" waiting" : "";
+    const list = document.getElementById("list");
+    if (!items.length){ list.innerHTML = '<div class="empty">Nothing waiting.<br>Agents are working autonomously. 🛡</div>'; return; }
+    list.innerHTML = items.map(card).join("");
+  } catch(e){ document.getElementById("list").innerHTML = '<div class="empty">Can\'t reach Moira sidecar.</div>'; }
+}
+
+function card(it){
+  const checks = (it.checks||[]).map(c =>
+    `<div class="check"><span class="dot" style="background:${COLOR[c.status]||'#8b949e'}"></span>
+     <span class="cname">${esc(c.name)}</span><span class="csum">${esc(c.summary)}</span></div>`).join("");
+  return `<div class="card" data-run="${esc(it.run_id)}">
+    <div class="ch">${it.persona?`<span class="persona">${esc(it.persona)}</span>`:""}
+      <span class="pipe">${esc(it.pipeline)}</span><span class="ws">· ${esc(it.workspace)}</span></div>
+    <div class="msg">${esc(it.message)}</div>
+    ${checks?`<div class="sec">Checks feeding this gate</div>${checks}`:""}
+    <div class="meta">
+      ${it.model&&it.model!=="—"?`<span class="mdl">◆ ${esc(it.model)}</span>`:""}
+      <span>⏱ ${fmtDur(it.duration)}</span><span>$${it.usd??0}</span><span>⛁ ${fmtTok(it.tokens)}</span>
+      <span><b>${it.changed_files||0}</b> files</span>
+    </div>
+    <textarea placeholder="What did you verify? / feedback for rework"></textarea>
+    <div class="acts">
+      <button class="approve" onclick="decide(this,'approve')">Approve</button>
+      <button class="reject" onclick="decide(this,'reject')">Reject &amp; rework</button>
+    </div></div>`;
+}
+
+async function decide(btn, kind){
+  if (busy) return; busy = true;
+  const card = btn.closest(".card"); const run = card.dataset.run;
+  const note = card.querySelector("textarea").value;
+  card.querySelectorAll("button").forEach(b => b.disabled = true);
+  try {
+    const body = kind==="approve" ? {by:"mobile", confirm: note||"Approved from mobile"} : {by:"mobile", feedback: note};
+    await fetch(`/api/runs/${run}/${kind}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    toast(kind==="approve" ? "Approved ✓" : "Sent back for rework");
+  } catch(e){ toast("Failed — try again"); }
+  busy = false; setTimeout(load, 600);
+}
+
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

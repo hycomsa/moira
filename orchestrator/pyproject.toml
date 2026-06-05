@@ -1,0 +1,27 @@
+[project]
+name = "moira-orchestrator"
+version = "0.1.0"
+description = "Moira — governed agent orchestration core (v0.1 spike)"
+requires-python = ">=3.11"
+# Core has ZERO runtime dependencies (stdlib only) — by design, so the spike
+# installs and runs anywhere with no friction.
+dependencies = []
+
+[project.optional-dependencies]
+# Real backends / future engine. Not needed for the offline test suite or demo.
+backends = [
+    "litellm>=1.40",     # multi-model routing (frontier + local Ollama)
+]
+engine = [
+    "langgraph>=0.2",    # target orchestration engine (ADR-002), v0.2
+]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+moira = "moira_cli:main"
+
+[tool.setuptools]
+py-modules = ["moira_cli"]
+packages = ["moira_core", "moira_core.backends"]
