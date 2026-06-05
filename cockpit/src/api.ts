@@ -205,6 +205,8 @@ export const api = {
     POST("/api/gate/simulate", { high_cutoff, low_cutoff }),
   start: (body: { func_id: string; pipeline_id?: string; pipeline?: string; backend?: string; owner?: string; analysis_gate?: string; impl_gate?: string }) =>
     POST("/api/runs", { owner: _user.name, ...body, workspace_id: activeWs }),
+  rerun: (id: string): Promise<{ run_id: string; status: string }> =>
+    POST(`/api/runs/${id}/rerun`, { owner: _user.name }),
   approve: (id: string, by: string, confirm: string) =>
     POST(`/api/runs/${id}/approve`, { by, confirm }),
   reject: (id: string, by: string, feedback: string) =>

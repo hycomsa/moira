@@ -846,6 +846,32 @@ class Handler(BaseHTTPRequestHandler):
                 log.info("gate %s %s by %s", run_id, dec.decision, dec.by)
                 background(run["owner"], run_id, lambda e, p=pipe, c=ctx, d=dec, r=run_id: e.resume(r, p, c, d))
                 return self._send(200, {"run_id": run_id, "status": "running", "waiting_node": None})
+            if path.endswith("/rerun"):
+                old_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
+                run = store.get_run(old_id)
+                if not run:
+                    return self._send(404, {"error": "not found"})
+                pipe = Pipeline.from_dict(json.loads(run["pipeline"]))
+                run_ws = run.get("workspace_id", "default")
+                owner = body.get("owner") or run["owner"]
+                # re-launch the SAME pipeline as a fresh run, reconstructing the context
+                # exactly as the original launch: discovery (skill nodes) authors into the
+                # AI SDLC repo; SDLC runs write code into code_path.
+                is_discovery = any(n.skill for n in pipe.nodes)
+                func_id = next((a.get("input", {}).get("spec_ref")
+                                for a in store.audit_records(old_id)
+                                if a.get("input", {}).get("spec_ref")), "")
+                ctx = context_for(func_id, ws_repo(store, run_ws))
+                if is_discovery:
+                    ctx["cwd"] = ws_repo(store, run_ws)
+                else:
+                    code = ws_code_path(store, run_ws)
+                    if code:
+                        ctx["cwd"] = code
+                new_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=run_ws)
+                log.info("rerun %s -> new run %s", old_id, new_id)
+                background(owner, new_id, lambda e, p=pipe, c=ctx, r=new_id: e.drive_existing(r, p, c))
+                return self._send(201, {"run_id": new_id, "status": "running", "waiting_node": None})
             if path == "/api/gate/simulate":
                 cfg = GateConfig(mode=GateMode.HYBRID,
                                  high_cutoff=float(body.get("high_cutoff", 0.85)),

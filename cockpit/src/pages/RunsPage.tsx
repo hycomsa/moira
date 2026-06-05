@@ -34,6 +34,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [chain, setChain] = useState<ChainStatus | null>(null);
   const [evalRes, setEvalRes] = useState<EvalResult | null>(null);
   const [evalBusy, setEvalBusy] = useState(false);
+  const [rerunBusy, setRerunBusy] = useState(false);
   const [regs, setRegs] = useState<Regulation[]>([]);
   const [compOpen, setCompOpen] = useState(false);
   const [selRefs, setSelRefs] = useState<string[]>([]);
@@ -57,6 +58,14 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   };
   const openArtifact = async (id: string) => {
     try { setArtifact(await api.artifact(id)); } catch { /* not in repo */ }
+  };
+  const rerun = async () => {
+    if (!detail) return;
+    setRerunBusy(true);
+    try {
+      const res = await api.rerun(detail.run.run_id);
+      await refresh(); setSelected(res.run_id); setStep(null);
+    } catch { /* surfaced via run list */ } finally { setRerunBusy(false); }
   };
   const runEval = async () => {
     if (!detail) return;
@@ -170,6 +179,8 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                   : <span className="chain-badge legacy" title="records written before hash-chaining">🛡 unsealed</span>
               )}
               <span className="grow1" />
+              <Button variant="ghost" size="sm" disabled={rerunBusy} onClick={rerun}
+                title="Re-run this pipeline as a fresh run (same inputs)">{rerunBusy ? "…" : "↻ Re-run"}</Button>
               <Button variant="ghost" size="sm" disabled={evalBusy} onClick={runEval}
                 title="Score this run's output quality (LLM-as-judge → scorecard)">
                 {evalBusy ? "scoring…" : "⚖ Evaluate"}</Button>
