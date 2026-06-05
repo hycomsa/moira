@@ -47,6 +47,22 @@ needs webkit2gtk system deps); build it locally with `cargo tauri build` when to
 Repo-reader resolution tests are opt-in: point `MOIRA_CSL_REPO` at a real AI SDLC repo to run
 them, otherwise they skip.
 
+## Optional: Superpowers coding backend
+
+Moira can drive a coding node with [Claude Code **Superpowers**](https://github.com/obra/superpowers)
+(plan → TDD → systematic debugging → code review) instead of the custom `dev@*` skills — they
+**coexist**, you opt in per run:
+
+```bash
+git clone https://github.com/obra/superpowers ~/.moira/plugins/superpowers
+export MOIRA_SUPERPOWERS_DIR=~/.moira/plugins/superpowers   # enables the opt-in
+```
+
+Then pick the **`sdlc-superpowers`** pipeline (or the **`superpowers-coder`** agent in the editor).
+The backend loads the plugin *for that run only* via `claude --plugin-dir` (role `superpowers-coder`),
+so every other run — `dev@*`, discovery, eval, compliance — is untouched. With the env var unset,
+behaviour is unchanged. Heavy coding roles get a larger turn/time budget automatically.
+
 ## Conventions
 
 - Keep the orchestrator **dependency-free** (stdlib only) — it ships as the sidecar.

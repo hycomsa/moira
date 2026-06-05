@@ -15,6 +15,7 @@ Run with a real `claude` CLI present to exercise true delegation.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from typing import Any
@@ -39,13 +40,27 @@ class ClaudeCodeBackend:
                   "compliance-verifier", "compliance-reviewer"}
     # judging roles that READ code/specs but must never modify (read-only exploration)
     READONLY_ROLES = {"spec-conformance-verifier", "compliance-verifier", "compliance-reviewer"}
+    # opt-in: roles that drive Claude Code "Superpowers" (loaded per-run via --plugin-dir from
+    # $MOIRA_SUPERPOWERS_DIR) instead of the custom dev@* skills. Coexists — only these roles change.
+    SUPERPOWERS_ROLES = {"superpowers-coder"}
+    # heavy coding roles: plan→TDD→subagents need a bigger turn/time budget than the default
+    HEAVY_ROLES = {"superpowers-coder", "code-generator", "coder",
+                   "backend-developer", "frontend-developer"}
+    # appended to the system prompt for heavy/superpowers roles so interactive skills
+    # (brainstorm/plan-approval) don't stall a headless run
+    AUTONOMY = ("Work autonomously end-to-end. If a planning, brainstorming, or review skill would "
+                "normally pause to ask the user, make reasonable assumptions, state them briefly, and "
+                "proceed — never stop and wait for confirmation. Finish by leaving the working tree edited.")
 
     def __init__(self, binary: str = "claude", timeout: int = 600,
-                 permission_mode: str = "acceptEdits", max_turns: int = 12) -> None:
+                 permission_mode: str = "acceptEdits", max_turns: int = 12,
+                 heavy_timeout: int = 1800, heavy_max_turns: int = 40) -> None:
         self.binary = binary
         self.timeout = timeout
         self.permission_mode = permission_mode
         self.max_turns = max_turns
+        self.heavy_timeout = heavy_timeout
+        self.heavy_max_turns = heavy_max_turns
 
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
@@ -76,22 +91,28 @@ class ClaudeCodeBackend:
             feedback=context.get("feedback", {}).get(node.id, ""),
         )
 
-    def run(self, node: Node, context: dict[str, Any]) -> BackendResult:
-        if not self.available():
-            return BackendResult(ok=False,
-                                 error=f"claude CLI '{self.binary}' not found on PATH")
+    def _build_cmd(self, node: Node, context: dict[str, Any]) -> list[str]:
+        """Assemble the `claude` argv (pure — no I/O, so it's unit-testable)."""
         role = node.role or node.id
         is_skill = bool(node.skill)
+        heavy = role in self.HEAVY_ROLES
+        max_turns = self.heavy_max_turns if heavy else self.max_turns
         cmd = [
             self.binary, "-p", self._build_prompt(node, context),
             "--output-format", "json",
             "--permission-mode", self.permission_mode,
-            "--max-turns", str(self.max_turns),
+            "--max-turns", str(max_turns),
         ]
+        # opt-in: load Superpowers for this session only (true coexistence with dev@* — other
+        # runs are untouched). Enabled when the role opts in AND the env var points at the plugin.
+        sp_dir = os.environ.get("MOIRA_SUPERPOWERS_DIR")
+        if role in self.SUPERPOWERS_ROLES and sp_dir:
+            cmd += ["--plugin-dir", sp_dir]
         # skill runs let the framework skill behave normally (it writes artifacts);
-        # non-skill stage runs use the JSON output contract.
+        # non-skill stage runs use the JSON output contract (+ an autonomy nudge for heavy roles).
         if not is_skill:
-            cmd += ["--append-system-prompt", self.SYSTEM]
+            system = self.SYSTEM + ("\n\n" + self.AUTONOMY if heavy else "")
+            cmd += ["--append-system-prompt", system]
         # per-node model override (enables cross-model verification / strong-model planning)
         if node.model and node.model not in ("", "mock"):
             cmd += ["--model", node.model]
@@ -103,9 +124,17 @@ class ClaudeCodeBackend:
         # never modify it — keep exploration tools, forbid edits.
         elif role in self.READONLY_ROLES and not is_skill:
             cmd += ["--disallowed-tools", "Edit", "Write"]
+        return cmd
+
+    def run(self, node: Node, context: dict[str, Any]) -> BackendResult:
+        if not self.available():
+            return BackendResult(ok=False,
+                                 error=f"claude CLI '{self.binary}' not found on PATH")
+        cmd = self._build_cmd(node, context)
+        timeout = self.heavy_timeout if (node.role or node.id) in self.HEAVY_ROLES else self.timeout
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=self.timeout,
+                cmd, capture_output=True, text=True, timeout=timeout,
                 cwd=context.get("cwd"),
             )
         except subprocess.TimeoutExpired:

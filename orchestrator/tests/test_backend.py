@@ -52,5 +52,51 @@ class TestContractParsing(unittest.TestCase):
         self.assertIn("raw", obj)
 
 
+class TestSuperpowersWiring(unittest.TestCase):
+    """Role-gated Superpowers (--plugin-dir) + heavy turn budget + autonomy nudge."""
+
+    def _cmd(self, role, env=None):
+        from moira_core.models import Node, NodeType
+        old = os.environ.get("MOIRA_SUPERPOWERS_DIR")
+        if env is None:
+            os.environ.pop("MOIRA_SUPERPOWERS_DIR", None)
+        else:
+            os.environ["MOIRA_SUPERPOWERS_DIR"] = env
+        try:
+            node = Node(id="impl", name="impl", type=NodeType.PRODUCER,
+                        backend="claude_code", role=role, spec_ref="FUNC-X")
+            return B()._build_cmd(node, {"spec_text": "spec"})
+        finally:
+            if old is None:
+                os.environ.pop("MOIRA_SUPERPOWERS_DIR", None)
+            else:
+                os.environ["MOIRA_SUPERPOWERS_DIR"] = old
+
+    def test_superpowers_role_loads_plugin_dir_when_env_set(self):
+        cmd = self._cmd("superpowers-coder", env="/plugins/superpowers")
+        self.assertIn("--plugin-dir", cmd)
+        self.assertIn("/plugins/superpowers", cmd)
+        # heavy turn budget
+        self.assertEqual(cmd[cmd.index("--max-turns") + 1], str(B().heavy_max_turns))
+        # autonomy nudge appended to the system prompt
+        sys_prompt = cmd[cmd.index("--append-system-prompt") + 1]
+        self.assertIn("autonomously", sys_prompt)
+
+    def test_superpowers_role_noop_without_env(self):
+        cmd = self._cmd("superpowers-coder", env=None)
+        self.assertNotIn("--plugin-dir", cmd)  # opt-in: no env → behaviour unchanged
+
+    def test_other_roles_never_get_plugin_dir(self):
+        cmd = self._cmd("code-generator", env="/plugins/superpowers")
+        self.assertNotIn("--plugin-dir", cmd)  # only the opt-in role
+        # but code-generator is still "heavy" → bigger budget, no Superpowers
+        self.assertEqual(cmd[cmd.index("--max-turns") + 1], str(B().heavy_max_turns))
+
+    def test_light_role_keeps_small_budget_and_no_autonomy(self):
+        cmd = self._cmd("requirements-analyst", env="/plugins/superpowers")
+        self.assertEqual(cmd[cmd.index("--max-turns") + 1], str(B().max_turns))
+        self.assertNotIn("autonomously", cmd[cmd.index("--append-system-prompt") + 1])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
