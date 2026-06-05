@@ -139,6 +139,14 @@ class Engine:
             gates = [n for n in ready if n.type == NodeType.GATE]
 
             if workers:
+                # mark workers RUNNING + emit node.start BEFORE executing, so the cockpit
+                # shows which node is in progress during a long (e.g. claude) step instead
+                # of a frozen-looking "running" run with no events.
+                for n in workers:
+                    state[n.id] = RUNNING
+                    self._event(run_id, "node.start",
+                                f"[{n.name}] running via {n.backend if n.type != NodeType.AUTO_CHECK else 'auto-check'}", n.id)
+                self.store.save_run_state(run_id, state)
                 results = self._exec_parallel(workers, context)
                 for n in workers:  # persist deterministically by ready order
                     ex = results[n.id]
@@ -264,8 +272,7 @@ class Engine:
 
     def _persist_exec(self, run_id: str, node: Node, ex: dict, context: dict[str, Any]) -> None:
         attempts = node.max_retries + 1 if node.type != NodeType.AUTO_CHECK else 1
-        self._event(run_id, "node.start",
-                    f"[{node.name}] start via {node.backend if node.type != NodeType.AUTO_CHECK else 'auto-check'}", node.id)
+        # node.start is emitted by the drive loop BEFORE execution (live progress)
         for err in ex["errors"]:
             self._event(run_id, "retry", f"[{node.name}] failed: {err}", node.id)
         res = ex["result"]

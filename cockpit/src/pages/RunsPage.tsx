@@ -182,13 +182,16 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               <div className="plan">
                 {detail.pipeline.nodes.map((n) => {
                   const rec = detail.audit.find((a) => a.node_id === n.id);
+                  // live status from run state (shows "running" while a node executes,
+                  // before any audit record exists); fall back to the audit record.
+                  const status = detail.state?.[n.id] ?? rec?.status ?? "pending";
                   return (
                     <div key={n.id} className={"plan-node " + (n.type === "gate" ? "gate " : "") + (step?.node_id === n.id ? "sel" : "")}
                          onClick={() => rec && setStep(rec)}>
                       <span className="nicon">{ICON(n.type)}</span>
                       <span className="nname">{n.name}</span>
                       {n.gate && <span className="gmode">{n.gate.mode}</span>}
-                      <Dot s={rec?.status ?? "pending"} />
+                      <Dot s={status} />
                     </div>
                   );
                 })}

@@ -64,22 +64,47 @@ def setup_logging() -> None:
     log.addHandler(sh)
 
 
-def background(owner: str, fn) -> None:
+def background(owner: str, run_id: str, fn) -> None:
     """Drive a run OFF the request thread so the HTTP call returns immediately
     (the cockpit then polls). The thread uses its OWN Store + Engine (SQLite is
-    per-thread). Exceptions are logged, never crash the server."""
+    per-thread). A crash marks the run failed (not stuck 'running') and is logged."""
     def _run():
         store = open_store()
         try:
             res = fn(Engine(store, registry(), owner=owner))
-            rid = getattr(res, "run_id", "?")
-            status = getattr(getattr(res, "status", None), "value", res)
-            log.info("run %s -> %s", rid, status)
+            log.info("run %s -> %s", run_id, getattr(getattr(res, "status", None), "value", res))
         except Exception:  # noqa: BLE001
-            log.error("background run failed:\n%s", traceback.format_exc())
+            log.error("background run %s failed:\n%s", run_id, traceback.format_exc())
+            try:
+                from moira_core.models import Event
+                store.update_run_status(run_id, "failed")
+                store.append_event(Event(run_id=run_id, kind="run.end",
+                                         message="Run failed (background error) — see Activity → Sidecar logs"))
+            except Exception:  # noqa: BLE001
+                pass
         finally:
             store.close()
     threading.Thread(target=_run, daemon=True).start()
+
+
+def recover_orphans() -> None:
+    """On startup, any run still 'running' is an orphan from a previous process
+    (background drive threads don't survive a restart) → mark it failed so it
+    doesn't sit stuck 'running' forever."""
+    store = open_store()
+    try:
+        from moira_core.models import Event
+        n = 0
+        for r in store.list_runs():
+            if r["status"] == "running":
+                store.update_run_status(r["run_id"], "failed")
+                store.append_event(Event(run_id=r["run_id"], kind="run.end",
+                                         message="Run interrupted (sidecar restarted)"))
+                n += 1
+        if n:
+            log.info("recovered %d orphaned running run(s) -> failed", n)
+    finally:
+        store.close()
 
 
 def open_store():
@@ -376,6 +401,7 @@ def run_payload(store: Store, run_id: str) -> dict:
         "events": store.events(run_id),
         "audit": store.audit_records(run_id),
         "cost": store.run_cost(run_id),
+        "state": store.get_run_state(run_id),
     }
 
 
@@ -674,7 +700,7 @@ class Handler(BaseHTTPRequestHandler):
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
                 log.info("launch run %s func=%s pipeline=%s backend=%s owner=%s",
                          run_id, func_id, pipe.id, body.get("backend", "mock"), owner)
-                background(owner, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
+                background(owner, run_id, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
                 return self._send(201, {"run_id": run_id, "status": "running", "waiting_node": None})
             if path.startswith("/api/runs/") and path.endswith("/report"):
                 from moira_core.report import render_run_report
@@ -793,7 +819,7 @@ class Handler(BaseHTTPRequestHandler):
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
                 log.info("launch discovery %s steps=%s owner=%s",
                          run_id, [s["skill"] for s in steps], owner)
-                background(owner, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
+                background(owner, run_id, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
                 return self._send(201, {"run_id": run_id, "status": "running", "waiting_node": None})
             if path.endswith("/approve") or path.endswith("/reject"):
                 run_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
@@ -818,7 +844,7 @@ class Handler(BaseHTTPRequestHandler):
                 if code:
                     ctx["cwd"] = code
                 log.info("gate %s %s by %s", run_id, dec.decision, dec.by)
-                background(run["owner"], lambda e, p=pipe, c=ctx, d=dec, r=run_id: e.resume(r, p, c, d))
+                background(run["owner"], run_id, lambda e, p=pipe, c=ctx, d=dec, r=run_id: e.resume(r, p, c, d))
                 return self._send(200, {"run_id": run_id, "status": "running", "waiting_node": None})
             if path == "/api/gate/simulate":
                 cfg = GateConfig(mode=GateMode.HYBRID,
@@ -856,6 +882,7 @@ def main(argv=None) -> int:
     REPO = args.repo
     STATIC = args.static
     setup_logging()
+    recover_orphans()
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     log.info("Moira API on http://127.0.0.1:%s  repo=%s  static=%s  log=%s",
              args.port, REPO, STATIC, LOG_PATH)

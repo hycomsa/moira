@@ -52,6 +52,7 @@ export interface RunDetail {
   events: EventRow[];
   audit: AuditRow[];
   cost: { tokens_in: number; tokens_out: number; usd: number };
+  state?: Record<string, string>;  // live per-node status (pending/running/succeeded/waiting_gate/…)
 }
 
 export interface InboxItem {
