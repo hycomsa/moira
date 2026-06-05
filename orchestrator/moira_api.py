@@ -107,6 +107,17 @@ def recover_orphans() -> None:
         store.close()
 
 
+def live_path_for(run_id: str) -> str | None:
+    """Path to a run's live-stream buffer (<dir of DB>/live/<run_id>.jsonl). The
+    claude backend appends reasoning/tool/usage records here; /api/runs/{id}/live tails it."""
+    try:
+        d = Path(DB).resolve().parent / "live"
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d / f"{run_id}.jsonl")
+    except OSError:
+        return None
+
+
 def open_store():
     """Build the configured run store (primary + any export sinks).
 
@@ -587,6 +598,34 @@ class Handler(BaseHTTPRequestHandler):
                 from moira_core.integrity import verify_chain
                 run_id = path[len("/api/runs/"):-len("/verify")]
                 return self._send(200, verify_chain(store.audit_records(run_id)))
+            if path.startswith("/api/runs/") and path.endswith("/live"):
+                # live stream of the active claude node: reasoning text, tool calls, tokens
+                import time as _t
+                run_id = path[len("/api/runs/"):-len("/live")]
+                frm = int((parse_qs(parsed.query).get("from", ["0"])[0]) or 0)
+                lp = live_path_for(run_id)
+                lines = []
+                if lp and os.path.exists(lp):
+                    try:
+                        with open(lp, "r", encoding="utf-8", errors="replace") as f:
+                            lines = f.readlines()
+                    except OSError:
+                        lines = []
+                events = []
+                for ln in lines[frm:]:
+                    try:
+                        events.append(json.loads(ln))
+                    except json.JSONDecodeError:
+                        pass
+                run = store.get_run(run_id)
+                state = store.get_run_state(run_id) or {}
+                active = next((nid for nid, s in state.items() if s == "running"), None)
+                last = next((e for e in reversed(events) if e.get("tokens_in") or e.get("tokens_out")), {})
+                status = run["status"] if run else "?"
+                elapsed = round(_t.time() - run["created_at"]) if (run and status == "running") else 0
+                return self._send(200, {"events": events, "next": len(lines),
+                                        "tokens_in": last.get("tokens_in", 0), "tokens_out": last.get("tokens_out", 0),
+                                        "elapsed": elapsed, "active_node": active, "status": status})
             if path.startswith("/api/runs/") and path.endswith("/report"):
                 from moira_core.report import render_run_report
                 run_id = path[len("/api/runs/"):-len("/report")]
@@ -698,6 +737,7 @@ class Handler(BaseHTTPRequestHandler):
                 if code:
                     ctx["cwd"] = code
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
+                ctx["live_path"] = live_path_for(run_id)
                 log.info("launch run %s func=%s pipeline=%s backend=%s owner=%s",
                          run_id, func_id, pipe.id, body.get("backend", "mock"), owner)
                 background(owner, run_id, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
@@ -777,8 +817,11 @@ class Handler(BaseHTTPRequestHandler):
                        "spec_text": target, "func_id": spec_ref, "lineage": lineage}
                 if cwd:
                     ctx["cwd"] = cwd
+                # synchronous (returns the scorecard) but split so it streams live too
                 engine = Engine(store, registry(), owner=owner)
-                res = engine.start(pipe, ctx, workspace_id=ws_id)
+                run_id = engine.create(pipe, ctx, workspace_id=ws_id)
+                ctx["live_path"] = live_path_for(run_id)
+                res = engine.drive_existing(run_id, pipe, ctx)
                 rec = next((a for a in store.audit_records(res.run_id) if a.get("node_id") == "eval"), None)
                 scorecard = normalize_scorecard((rec or {}).get("output", {}), kind)
                 return self._send(201, {"run_id": res.run_id, "status": res.status.value,
@@ -817,6 +860,7 @@ class Handler(BaseHTTPRequestHandler):
                 ctx = context_for(steps[0].get("input", ""), ws_repo(store, ws_id))
                 ctx["cwd"] = ws_repo(store, ws_id)  # author INTO the AI SDLC repo, not code
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
+                ctx["live_path"] = live_path_for(run_id)
                 log.info("launch discovery %s steps=%s owner=%s",
                          run_id, [s["skill"] for s in steps], owner)
                 background(owner, run_id, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
@@ -869,6 +913,7 @@ class Handler(BaseHTTPRequestHandler):
                     if code:
                         ctx["cwd"] = code
                 new_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=run_ws)
+                ctx["live_path"] = live_path_for(new_id)
                 log.info("rerun %s -> new run %s", old_id, new_id)
                 background(owner, new_id, lambda e, p=pipe, c=ctx, r=new_id: e.drive_existing(r, p, c))
                 return self._send(201, {"run_id": new_id, "status": "running", "waiting_node": None})

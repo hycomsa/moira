@@ -99,7 +99,9 @@ class ClaudeCodeBackend:
         max_turns = self.heavy_max_turns if heavy else self.max_turns
         cmd = [
             self.binary, "-p", self._build_prompt(node, context),
-            "--output-format", "json",
+            # realtime NDJSON so we can stream reasoning/tools/tokens live (stream-json
+            # requires --verbose); the final `result` event is parsed like the old json mode.
+            "--output-format", "stream-json", "--verbose",
             "--permission-mode", self.permission_mode,
             "--max-turns", str(max_turns),
         ]
@@ -126,45 +128,122 @@ class ClaudeCodeBackend:
             cmd += ["--disallowed-tools", "Edit", "Write"]
         return cmd
 
+    @staticmethod
+    def _reduce_stream(lines, on_record=None):
+        """Consume the claude stream-json NDJSON, coalescing per assistant turn:
+        emit a live record for each text block / tool_use (via on_record(rec, tin, tout))
+        and return (final_result_event, tokens_in, tokens_out). Pure + testable."""
+        final = None
+        tin = tout = 0
+        for raw in lines:
+            raw = (raw or "").strip()
+            if not raw:
+                continue
+            try:
+                ev = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(ev, dict):
+                continue
+            et = ev.get("type")
+            if et == "assistant":
+                msg = ev.get("message", {}) or {}
+                u = msg.get("usage", {}) or {}
+                if u.get("input_tokens"):
+                    tin = u["input_tokens"]
+                tout += u.get("output_tokens", 0) or 0
+                for b in msg.get("content", []) or []:
+                    if not isinstance(b, dict):
+                        continue
+                    if b.get("type") == "text" and (b.get("text") or "").strip():
+                        rec = {"kind": "assistant", "text": b["text"][:4000]}
+                    elif b.get("type") == "tool_use":
+                        inp = json.dumps(b.get("input", {}), ensure_ascii=False)[:160]
+                        rec = {"kind": "tool", "text": f"{b.get('name', 'tool')}  {inp}"}
+                    else:
+                        continue
+                    if on_record:
+                        on_record(rec, tin, tout)
+            elif et == "result":
+                final = ev
+                u = ev.get("usage", {}) or {}
+                if u.get("input_tokens"):
+                    tin = u["input_tokens"]
+                if u.get("output_tokens"):
+                    tout = u["output_tokens"]
+                if on_record:
+                    on_record({"kind": "result", "text": str(ev.get("result", ""))[:500]}, tin, tout)
+        return final, tin, tout
+
     def run(self, node: Node, context: dict[str, Any]) -> BackendResult:
         if not self.available():
             return BackendResult(ok=False,
                                  error=f"claude CLI '{self.binary}' not found on PATH")
         cmd = self._build_cmd(node, context)
-        timeout = self.heavy_timeout if (node.role or node.id) in self.HEAVY_ROLES else self.timeout
+        role = node.role or node.id
+        timeout = self.heavy_timeout if role in self.HEAVY_ROLES else self.timeout
+        live_path = context.get("live_path")
+        node_id = node.id
+
+        def emit(rec: dict, tin: int, tout: int) -> None:
+            if not live_path:
+                return
+            import time as _t
+            line = {"t": round(_t.time(), 3), "node": node_id,
+                    "tokens_in": tin, "tokens_out": tout, **rec}
+            try:
+                with open(live_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(line, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
+
         try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout,
-                cwd=context.get("cwd"),
-            )
-        except subprocess.TimeoutExpired:
-            return BackendResult(ok=False, error="claude CLI timed out")
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, bufsize=1, cwd=context.get("cwd"))
         except Exception as e:  # noqa: BLE001
             return BackendResult(ok=False, error=f"claude CLI error: {e}")
 
-        if proc.returncode != 0:
-            return BackendResult(ok=False, error=proc.stderr.strip()[:500] or "non-zero exit")
+        import threading as _threading
+        timed_out = {"v": False}
 
-        return self._parse(proc.stdout)
+        def _kill():
+            timed_out["v"] = True
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        watchdog = _threading.Timer(timeout, _kill)
+        watchdog.start()
+        try:
+            final, _, _ = self._reduce_stream(proc.stdout, on_record=emit)
+            proc.wait()
+        finally:
+            watchdog.cancel()
+
+        if timed_out["v"]:
+            return BackendResult(ok=False, error="claude CLI timed out")
+        if final is None:
+            err = (proc.stderr.read() if proc.stderr else "").strip()[:500]
+            return BackendResult(ok=False, error=err or f"non-zero exit ({proc.returncode})")
+        return self._result_from_envelope(final)
 
     def _parse(self, stdout: str) -> BackendResult:
-        # 1) unwrap the claude --output-format json envelope (result + usage + cost)
-        text = stdout.strip()
-        result_text = text
-        cost = Cost()
+        """Parse a single json envelope string (kept for compatibility/tests)."""
         try:
-            envelope = json.loads(text)
-            if isinstance(envelope, dict):
-                result_text = envelope.get("result", text)
-                usage = envelope.get("usage", {}) or {}
-                cost = Cost(
-                    tokens_in=usage.get("input_tokens", 0),
-                    tokens_out=usage.get("output_tokens", 0),
-                    usd=envelope.get("total_cost_usd", 0.0) or 0.0,
-                )
+            envelope = json.loads(stdout.strip())
         except json.JSONDecodeError:
-            pass
+            envelope = {"result": stdout.strip()}
+        return self._result_from_envelope(envelope if isinstance(envelope, dict) else {"result": stdout})
 
+    def _result_from_envelope(self, envelope: dict[str, Any]) -> BackendResult:
+        # unwrap the claude result envelope (result + usage + cost)
+        result_text = envelope.get("result", "") or ""
+        usage = envelope.get("usage", {}) or {}
+        cost = Cost(
+            tokens_in=usage.get("input_tokens", 0) or 0,
+            tokens_out=usage.get("output_tokens", 0) or 0,
+            usd=envelope.get("total_cost_usd", 0.0) or 0.0,
+        )
         payload = self._extract_contract(result_text)
         out = payload.get("output", payload.get("raw", {}))
         if not isinstance(out, dict):  # raw text (e.g. skill runs) -> wrap

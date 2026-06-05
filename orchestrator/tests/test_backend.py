@@ -98,5 +98,43 @@ class TestSuperpowersWiring(unittest.TestCase):
         self.assertNotIn("autonomously", cmd[cmd.index("--append-system-prompt") + 1])
 
 
+class TestStreamReduce(unittest.TestCase):
+    """stream-json NDJSON → live records + final result envelope."""
+
+    SAMPLE = [
+        '{"type":"system","subtype":"init","session_id":"x"}',
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"Analyzing the spec…"}],"usage":{"input_tokens":1200,"output_tokens":40}}}',
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file":"a.ts"}}],"usage":{"input_tokens":1200,"output_tokens":60}}}',
+        '',  # blank line tolerated
+        'not json — ignored',
+        '{"type":"result","subtype":"success","result":"done","usage":{"input_tokens":1500,"output_tokens":300},"total_cost_usd":0.12}',
+    ]
+
+    def test_reduce_emits_records_and_final(self):
+        recs = []
+        final, tin, tout = B._reduce_stream(self.SAMPLE, on_record=lambda r, i, o: recs.append((r, i, o)))
+        kinds = [r["kind"] for r, _, _ in recs]
+        self.assertEqual(kinds, ["assistant", "tool", "result"])
+        self.assertIn("Analyzing", recs[0][0]["text"])
+        self.assertTrue(recs[1][0]["text"].startswith("Read"))
+        self.assertIsNotNone(final)
+        self.assertEqual(tin, 1500)            # final usage wins
+        self.assertEqual(tout, 300)
+        # tokens stream upward on each emitted record
+        self.assertEqual(recs[0][2], 40)       # output tokens after first assistant msg
+
+    def test_final_envelope_parses_like_json_mode(self):
+        final, _, _ = B._reduce_stream(self.SAMPLE)
+        res = B()._result_from_envelope(final)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.cost.tokens_in, 1500)
+        self.assertEqual(res.cost.usd, 0.12)
+        self.assertEqual(res.output.get("result"), "done")
+
+    def test_no_final_returns_none(self):
+        final, _, _ = B._reduce_stream(['{"type":"assistant","message":{"content":[]}}'])
+        self.assertIsNone(final)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

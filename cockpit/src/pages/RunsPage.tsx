@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getWorkspace, getUser, type Artifact, type AuditRow, type ChainStatus, type PipelineDef, type ReportResult, type RunDetail, type RunSummary } from "../api";
 import { FilesDiff } from "../components/FilesDiff";
 import { ProjectWizard } from "../components/ProjectWizard";
@@ -8,7 +8,7 @@ import { Metrics } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
 import { OrbitGraph } from "../components/OrbitGraph";
 import { ScorecardView } from "../components/Scorecard";
-import type { EvalResult, Regulation } from "../api";
+import type { EvalResult, Regulation, LiveState, LiveRecord } from "../api";
 
 const COLOR: Record<string, string> = {
   succeeded: "#3fb950", failed: "#f85149", waiting_gate: "#d29922",
@@ -35,6 +35,9 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [evalRes, setEvalRes] = useState<EvalResult | null>(null);
   const [evalBusy, setEvalBusy] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
+  const [live, setLive] = useState<LiveState | null>(null);
+  const [liveEvents, setLiveEvents] = useState<LiveRecord[]>([]);
+  const liveStop = useRef(false);
   const [regs, setRegs] = useState<Regulation[]>([]);
   const [compOpen, setCompOpen] = useState(false);
   const [selRefs, setSelRefs] = useState<string[]>([]);
@@ -103,6 +106,25 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   useEffect(() => { refresh(); const t = setInterval(refresh, 2500); return () => clearInterval(t); }, [refresh]);
   // deep-link: when another page (e.g. Discovery) opens a specific run, select it
   useEffect(() => { if (focusRun) { setSelected(focusRun); setStep(null); refresh(); } }, [focusRun, refresh]);
+  // live stream: tail the active node's reasoning/tools/tokens while the run executes
+  useEffect(() => {
+    if (!selected) return;
+    liveStop.current = false;
+    setLive(null); setLiveEvents([]);
+    let from = 0;
+    const loop = async () => {
+      if (liveStop.current) return;
+      try {
+        const d = await api.liveRun(selected, from);
+        if (liveStop.current) return;
+        if (d.events.length) setLiveEvents((p) => [...p, ...d.events]);
+        from = d.next; setLive(d);
+        setTimeout(loop, d.status === "running" ? 1200 : 4000);
+      } catch { setTimeout(loop, 3000); }
+    };
+    loop();
+    return () => { liveStop.current = true; };
+  }, [selected]);
   useEffect(() => {
     api.pipelines().then((d) => { setPipelines(d.pipelines); if (d.pipelines[0]) setPipelineId(d.pipelines[0].id); }).catch(() => { /* */ });
   }, []);
@@ -220,6 +242,25 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                 </section>
               ) : null;
             })()}
+            {(live?.status === "running" || liveEvents.length > 0) && (
+              <section className="panel">
+                <h3>Live{" "}
+                  <span className="muted" style={{ fontSize: 12, textTransform: "none" }}>
+                    {live?.active_node ? `· ▶ ${live.active_node} ` : ""}
+                    · ⏱ {live?.elapsed ?? 0}s · ⛁ {(live?.tokens_in || 0) + (live?.tokens_out || 0)} tok
+                  </span>
+                </h3>
+                <div className="log live-log">
+                  {liveEvents.map((e, i) => (
+                    <div className={"live-row lr-" + e.kind} key={i}>
+                      <span className="lr-ic">{e.kind === "tool" ? "🔧" : e.kind === "result" ? "✓" : "💬"}</span>
+                      <span className="lr-text">{e.text}</span>
+                    </div>
+                  ))}
+                  {liveEvents.length === 0 && <div className="muted small">waiting for the model…</div>}
+                </div>
+              </section>
+            )}
             <section className="panel grow">
               <h3>Activity log</h3>
               <div className="log">

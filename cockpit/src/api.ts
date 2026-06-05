@@ -222,7 +222,15 @@ export const api = {
   spend: (): Promise<SpendRollup> => fetch(ws("/api/spend")).then(j),
   logs: (tail = 400): Promise<{ path: string | null; log: string }> =>
     fetch(u(`/api/logs?tail=${tail}`)).then(j),
+  liveRun: (id: string, from = 0): Promise<LiveState> =>
+    fetch(u(`/api/runs/${id}/live?from=${from}`)).then(j),
 };
+
+export interface LiveRecord { t: number; node: string; kind: string; text: string; tokens_in?: number; tokens_out?: number; }
+export interface LiveState {
+  events: LiveRecord[]; next: number; tokens_in: number; tokens_out: number;
+  elapsed: number; active_node: string | null; status: string;
+}
 
 // per-workspace monthly budget (alert-only v1; kept client-side like the profile)
 export const getBudget = (): number => {

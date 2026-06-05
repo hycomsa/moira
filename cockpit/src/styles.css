@@ -125,7 +125,7 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 .inbox-item .actions { display: flex; gap: 6px; }
 .inbox-item .actions button { flex: 1; padding: 5px; }
 
-.run-header { display: flex; align-items: center; gap: 6px; padding: 4px 2px; }
+.run-header { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 2px; }
 .run-header .muted { color: var(--muted); }
 .run-header .cost { margin-left: auto; color: #3fb950; }
 
@@ -138,7 +138,14 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 .plan-node .nname { flex: 1; }
 .plan-node .gmode { color: var(--muted); font-size: 10px; text-transform: uppercase; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 
-.log { overflow-y: auto; flex: 1; font-size: 12px; }
+.log { overflow-y: auto; flex: 1; min-height: 180px; max-height: 52vh; font-size: 12px; }
+/* live model stream (reasoning / tool calls) */
+.live-log { max-height: 320px; }
+.live-row { display: flex; gap: 8px; padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 12.5px; }
+.live-row .lr-ic { flex: 0 0 auto; opacity: .8; }
+.live-row .lr-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.live-row.lr-tool .lr-text { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); }
+.live-row.lr-result .lr-text { color: #6fdc82; }
 .log-row { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--border); }
 .log-row .seq { color: var(--muted); width: 24px; text-align: right; }
 .log-row .kind { color: var(--accent); width: 110px; flex-shrink: 0; }
@@ -215,6 +222,11 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 .c-left { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .c-center { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .c-right { border-left: 1px solid var(--border); padding: 12px; overflow-y: auto; }
+/* small window: stop clipping — stack the three columns into one scrolling view */
+@media (max-width: 1024px) {
+  .cols3 { grid-template-columns: 1fr; height: auto; overflow-y: auto; }
+  .c-left, .c-center, .c-right { overflow: visible; border: none; }
+}
 
 /* inbox page cards */
 .inbox-card { border-left: 3px solid #d29922; margin-bottom: 12px; }
