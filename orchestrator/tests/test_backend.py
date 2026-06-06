@@ -98,6 +98,34 @@ class TestSuperpowersWiring(unittest.TestCase):
         self.assertNotIn("autonomously", cmd[cmd.index("--append-system-prompt") + 1])
 
 
+class TestBudgetTiers(unittest.TestCase):
+    """skill / heavy / default budgets pick the right --max-turns."""
+
+    def _turns(self, **node_kw):
+        from moira_core.models import Node, NodeType
+        b = B(max_turns=12, heavy_max_turns=40, skill_max_turns=7)
+        node = Node(id="n", name="n", type=NodeType.PRODUCER, backend="claude_code", **node_kw)
+        cmd = b._build_cmd(node, {"spec_text": "x"})
+        return cmd[cmd.index("--max-turns") + 1]
+
+    def test_skill_node_uses_skill_budget(self):
+        self.assertEqual(self._turns(role="ba-skill", skill="ba@shape-intent-spec"), "7")
+
+    def test_heavy_role_uses_heavy_budget(self):
+        self.assertEqual(self._turns(role="superpowers-coder"), "40")
+
+    def test_default_role_uses_default_budget(self):
+        self.assertEqual(self._turns(role="requirements-analyst"), "12")
+
+    def test_env_defaults(self):
+        import os
+        os.environ["MOIRA_CLAUDE_SKILL_TIMEOUT"] = "111"
+        try:
+            self.assertEqual(B().skill_timeout, 111)
+        finally:
+            del os.environ["MOIRA_CLAUDE_SKILL_TIMEOUT"]
+
+
 class TestStreamReduce(unittest.TestCase):
     """stream-json NDJSON → live records + final result envelope."""
 

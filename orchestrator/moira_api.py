@@ -42,6 +42,12 @@ REPO = None
 STATIC = None
 LOG_PATH = None
 log = logging.getLogger("moira")
+# how many times to retry a discovery skill node before escalating to a human gate
+# (1 = 2 attempts). With the short skill timeout this bounds the "stuck" window.
+try:
+    SKILL_RETRIES = int(os.environ.get("MOIRA_SKILL_RETRIES", "1"))
+except (TypeError, ValueError):
+    SKILL_RETRIES = 1
 
 
 def setup_logging() -> None:
@@ -486,9 +492,13 @@ class Handler(BaseHTTPRequestHandler):
                 primary = os.environ.get("MOIRA_PRIMARY", "sqlite")
                 git_on = os.environ.get("MOIRA_GIT_EXPORT", "0") not in ("", "0", "false", "False")
                 persistence = primary + (" + git" if git_on else "")
+                cc = ClaudeCodeBackend()
                 return self._send(200, {"ok": True, "backends": registry().available(),
                                         "repo": REPO, "persistence": persistence, "log": LOG_PATH,
-                                        "claude": ClaudeCodeBackend().available(), "version": "0.1"})
+                                        "claude": cc.available(), "version": "0.1",
+                                        "config": {"skill_timeout": cc.skill_timeout, "skill_max_turns": cc.skill_max_turns,
+                                                   "skill_retries": SKILL_RETRIES, "claude_timeout": cc.timeout,
+                                                   "heavy_timeout": cc.heavy_timeout}})
             if path == "/api/logs":
                 n = int((parse_qs(parsed.query).get("tail", ["200"])[0]) or 200)
                 text = ""
@@ -847,7 +857,7 @@ class Handler(BaseHTTPRequestHandler):
                     nodes.append(Node(id=aid, name=s["skill"], type=NodeType.PRODUCER,
                                       backend="claude_code", role="ba-skill", skill=s["skill"],
                                       skill_input=s.get("input", ""), prompt_extra=s.get("elaboration", ""),
-                                      spec_ref=s.get("input", ""),
+                                      spec_ref=s.get("input", ""), max_retries=SKILL_RETRIES,
                                       depends_on=[prev_gate] if prev_gate else []))
                     nodes.append(Node(id=gid, name=f"Review · {s['skill']}", type=NodeType.GATE,
                                       gate=GateConfig(mode=GateMode.HUMAN, persona=s.get("persona", "ba"),

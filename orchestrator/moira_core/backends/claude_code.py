@@ -52,15 +52,28 @@ class ClaudeCodeBackend:
                 "normally pause to ask the user, make reasonable assumptions, state them briefly, and "
                 "proceed — never stop and wait for confirmation. Finish by leaving the working tree edited.")
 
-    def __init__(self, binary: str = "claude", timeout: int = 600,
-                 permission_mode: str = "acceptEdits", max_turns: int = 12,
-                 heavy_timeout: int = 1800, heavy_max_turns: int = 40) -> None:
+    def __init__(self, binary: str = "claude", timeout: int | None = None,
+                 permission_mode: str = "acceptEdits", max_turns: int | None = None,
+                 heavy_timeout: int | None = None, heavy_max_turns: int | None = None,
+                 skill_timeout: int | None = None, skill_max_turns: int | None = None) -> None:
+        # Per-class budgets, env-configurable (sensible ops knobs; see CONTRIBUTING).
+        # Explicit constructor args still win (used by tests). Three tiers:
+        #   skill  — discovery ba@*/arch@* (fail fast: short timeout + few retries upstream)
+        #   heavy  — coding (code-generator, superpowers-coder): big budget
+        #   default — everything else (analysts, verifiers, evals)
+        def _env(name: str, default: int) -> int:
+            try:
+                return int(os.environ.get(name, default))
+            except (TypeError, ValueError):
+                return default
         self.binary = binary
-        self.timeout = timeout
         self.permission_mode = permission_mode
-        self.max_turns = max_turns
-        self.heavy_timeout = heavy_timeout
-        self.heavy_max_turns = heavy_max_turns
+        self.timeout = timeout if timeout is not None else _env("MOIRA_CLAUDE_TIMEOUT", 600)
+        self.max_turns = max_turns if max_turns is not None else _env("MOIRA_CLAUDE_MAX_TURNS", 12)
+        self.heavy_timeout = heavy_timeout if heavy_timeout is not None else _env("MOIRA_CLAUDE_HEAVY_TIMEOUT", 1800)
+        self.heavy_max_turns = heavy_max_turns if heavy_max_turns is not None else _env("MOIRA_CLAUDE_HEAVY_MAX_TURNS", 40)
+        self.skill_timeout = skill_timeout if skill_timeout is not None else _env("MOIRA_CLAUDE_SKILL_TIMEOUT", 240)
+        self.skill_max_turns = skill_max_turns if skill_max_turns is not None else _env("MOIRA_CLAUDE_SKILL_MAX_TURNS", 12)
 
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
@@ -96,7 +109,9 @@ class ClaudeCodeBackend:
         role = node.role or node.id
         is_skill = bool(node.skill)
         heavy = role in self.HEAVY_ROLES
-        max_turns = self.heavy_max_turns if heavy else self.max_turns
+        max_turns = (self.skill_max_turns if is_skill
+                     else self.heavy_max_turns if heavy
+                     else self.max_turns)
         cmd = [
             self.binary, "-p", self._build_prompt(node, context),
             # realtime NDJSON so we can stream reasoning/tools/tokens live (stream-json
@@ -181,7 +196,10 @@ class ClaudeCodeBackend:
                                  error=f"claude CLI '{self.binary}' not found on PATH")
         cmd = self._build_cmd(node, context)
         role = node.role or node.id
-        timeout = self.heavy_timeout if role in self.HEAVY_ROLES else self.timeout
+        # fail fast on skills (headless ba@* can hang); big budget for coding; default otherwise
+        timeout = (self.skill_timeout if node.skill
+                   else self.heavy_timeout if role in self.HEAVY_ROLES
+                   else self.timeout)
         live_path = context.get("live_path")
         node_id = node.id
 

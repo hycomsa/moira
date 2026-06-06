@@ -109,6 +109,23 @@ Where to look when something misbehaves:
 Note: `POST /api/eval` (quality/conformance/compliance scorecards) is intentionally **synchronous** — it
 returns the scorecard in the response, so that call does block until the judge finishes.
 
+## Tuning: agent timeouts & retries
+
+The `claude_code` backend runs in three budget tiers, all env-configurable (sane defaults). Skills fail
+fast so a headless-broken `ba@*` escalates to a human gate in minutes instead of grinding; coding gets a
+big budget. Current values are shown in `GET /api/health` (`config`).
+
+| Env var | Default | Applies to |
+|---|---|---|
+| `MOIRA_CLAUDE_SKILL_TIMEOUT` | `240` s | discovery skill nodes (`ba@*`/`arch@*`) |
+| `MOIRA_CLAUDE_SKILL_MAX_TURNS` | `12` | discovery skill nodes |
+| `MOIRA_SKILL_RETRIES` | `1` | skill retries before escalating (1 = 2 attempts) |
+| `MOIRA_CLAUDE_TIMEOUT` / `MOIRA_CLAUDE_MAX_TURNS` | `600` s / `12` | default (analysts, verifiers, evals) |
+| `MOIRA_CLAUDE_HEAVY_TIMEOUT` / `MOIRA_CLAUDE_HEAVY_MAX_TURNS` | `1800` s / `40` | coding (`code-generator`, `superpowers-coder`) |
+
+So a broken skill escalates after `skill_timeout × (skill_retries + 1)` ≈ 8 min. Set e.g.
+`MOIRA_CLAUDE_SKILL_TIMEOUT=120 MOIRA_SKILL_RETRIES=0` for aggressive fail-fast.
+
 ## Conventions
 
 - Keep the orchestrator **dependency-free** (stdlib only) — it ships as the sidecar.
