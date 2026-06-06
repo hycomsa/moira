@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from typing import Any
@@ -243,6 +244,7 @@ class ClaudeCodeBackend:
                    else self.timeout)
         live_path = context.get("live_path")
         node_id = node.id
+        debug = os.environ.get("MOIRA_DEBUG") not in (None, "", "0", "false", "False")
 
         def emit(rec: dict, tin: int, tout: int) -> None:
             if not live_path:
@@ -255,6 +257,13 @@ class ClaudeCodeBackend:
                     f.write(json.dumps(line, ensure_ascii=False) + "\n")
             except OSError:
                 pass
+
+        if debug:
+            # MOIRA_DEBUG=1: record the exact command + prompt the model is given so a
+            # headless failure is fully reproducible. No secrets are on the cmdline (the
+            # claude CLI authenticates from the keychain), so this is safe to persist.
+            emit({"kind": "debug", "text": "$ " + " ".join(shlex.quote(c) for c in cmd)
+                  + f"\n# cwd={context.get('cwd')} role={role} timeout={timeout}s"}, 0, 0)
 
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -280,9 +289,13 @@ class ClaudeCodeBackend:
             watchdog.cancel()
 
         if timed_out["v"]:
+            if debug:
+                emit({"kind": "debug", "text": f"timed out after {timeout}s — process killed"}, 0, 0)
             return BackendResult(ok=False, error="claude CLI timed out")
         if final is None:
             err = (proc.stderr.read() if proc.stderr else "").strip()[:500]
+            if debug:
+                emit({"kind": "debug", "text": f"FAILED (exit {proc.returncode})\n{err}"}, 0, 0)
             return BackendResult(ok=False, error=err or f"non-zero exit ({proc.returncode})")
         return self._result_from_envelope(final)
 

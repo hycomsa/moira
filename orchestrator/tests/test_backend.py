@@ -192,5 +192,60 @@ class TestStreamReduce(unittest.TestCase):
         self.assertIsNone(final)
 
 
+class TestDebugLogging(unittest.TestCase):
+    """MOIRA_DEBUG=1 records the exact command/prompt as a live `debug` record."""
+
+    def _run(self, debug_env, returncode=0, stdout_lines=None):
+        import io, tempfile, pathlib, json as _json
+        from unittest import mock
+        from moira_core.models import Node, NodeType
+        d = tempfile.mkdtemp()
+        live = str(pathlib.Path(d, "live.jsonl"))
+        node = Node(id="impl", name="impl", type=NodeType.PRODUCER,
+                    backend="claude_code", role="requirements-analyst", spec_ref="FUNC-X")
+
+        class _Proc:
+            def __init__(self):
+                self.stdout = iter(stdout_lines or [])
+                self.stderr = io.StringIO("boom" if returncode else "")
+                self.returncode = returncode
+
+            def wait(self):
+                return self.returncode
+
+        old = os.environ.get("MOIRA_DEBUG")
+        if debug_env is None:
+            os.environ.pop("MOIRA_DEBUG", None)
+        else:
+            os.environ["MOIRA_DEBUG"] = debug_env
+        try:
+            with mock.patch("subprocess.Popen", return_value=_Proc()), \
+                 mock.patch("shutil.which", return_value="/usr/bin/claude"):
+                B().run(node, {"spec_text": "spec", "live_path": live, "cwd": d})
+        finally:
+            if old is None:
+                os.environ.pop("MOIRA_DEBUG", None)
+            else:
+                os.environ["MOIRA_DEBUG"] = old
+        if not os.path.exists(live):
+            return []
+        with open(live, encoding="utf-8") as f:
+            return [_json.loads(ln) for ln in f]
+
+    def test_debug_records_command(self):
+        recs = self._run("1")
+        self.assertTrue(recs and recs[0]["kind"] == "debug")
+        self.assertIn("$ ", recs[0]["text"])         # rendered command
+        self.assertIn("timeout=", recs[0]["text"])    # chosen budget annotated
+
+    def test_no_debug_record_without_env(self):
+        recs = self._run(None)
+        self.assertFalse(any(r.get("kind") == "debug" for r in recs))
+
+    def test_debug_records_failure(self):
+        recs = self._run("1", returncode=2)  # no result envelope -> failure path
+        self.assertTrue(any(r["kind"] == "debug" and "FAILED" in r["text"] for r in recs))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

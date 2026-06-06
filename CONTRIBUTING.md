@@ -109,6 +109,18 @@ Where to look when something misbehaves:
 Note: `POST /api/eval` (quality/conformance/compliance scorecards) is intentionally **synchronous** — it
 returns the scorecard in the response, so that call does block until the judge finishes.
 
+### Reproducing a run: `MOIRA_DEBUG` + debug bundle
+
+- Set **`MOIRA_DEBUG=1`** (any value but `0`/`false`/empty) before launching the sidecar to make the
+  `claude_code` backend record, as a `debug` live record per node, the **exact command + full prompt** it
+  hands the model (plus `cwd`, role and the chosen timeout), and the **stderr/exit code on failure**. No
+  secrets are on the cmdline — the `claude` CLI authenticates from the keychain — so this is safe to keep.
+  Whether it's on is shown in `GET /api/health` (`config.debug`).
+- Every run drill-down has a **🐞 Debug bundle** button → downloads `moira-debug-<run_id>.json`:
+  run + pipeline + events + audit + cost + per-node state, the **live stream** (including the
+  command/prompt above when `MOIRA_DEBUG=1`), and the slice of the sidecar log for that run. Same payload
+  as `GET /api/runs/{id}/debug`. Attach it to a bug report and the run is fully reproducible offline.
+
 ## Tuning: agent timeouts & retries
 
 The `claude_code` backend runs in three budget tiers, all env-configurable (sane defaults). Skills fail

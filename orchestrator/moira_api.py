@@ -498,7 +498,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "claude": cc.available(), "version": "0.1",
                                         "config": {"skill_timeout": cc.skill_timeout, "skill_max_turns": cc.skill_max_turns,
                                                    "skill_retries": SKILL_RETRIES, "claude_timeout": cc.timeout,
-                                                   "heavy_timeout": cc.heavy_timeout}})
+                                                   "heavy_timeout": cc.heavy_timeout,
+                                                   "debug": os.environ.get("MOIRA_DEBUG") not in (None, "", "0", "false", "False")}})
             if path == "/api/logs":
                 n = int((parse_qs(parsed.query).get("tail", ["200"])[0]) or 200)
                 text = ""
@@ -643,6 +644,41 @@ class Handler(BaseHTTPRequestHandler):
                 if not payload:
                     return self._send(404, {"error": "not found"})
                 return self._send(200, {"markdown": render_run_report(payload)})
+            if path.startswith("/api/runs/") and path.endswith("/debug"):
+                # one-shot reproducibility bundle: run payload + live stream (incl. the exact
+                # command/prompt when MOIRA_DEBUG=1) + the slice of the sidecar log for this run.
+                import time as _t
+                run_id = path[len("/api/runs/"):-len("/debug")]
+                payload = run_payload(store, run_id)
+                if not payload:
+                    return self._send(404, {"error": "not found"})
+                live = []
+                lp = live_path_for(run_id)
+                if lp and os.path.exists(lp):
+                    try:
+                        with open(lp, "r", encoding="utf-8", errors="replace") as f:
+                            for ln in f:
+                                try:
+                                    live.append(json.loads(ln))
+                                except json.JSONDecodeError:
+                                    pass
+                    except OSError:
+                        pass
+                log_tail = []
+                if LOG_PATH and os.path.exists(LOG_PATH):
+                    try:
+                        with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+                            log_tail = [ln.rstrip("\n") for ln in f.readlines()[-2000:]
+                                        if run_id[:10] in ln]
+                    except OSError:
+                        pass
+                cc = ClaudeCodeBackend()
+                bundle = {"generated_at": round(_t.time()), "run_id": run_id,
+                          "config": {"skill_timeout": cc.skill_timeout, "claude_timeout": cc.timeout,
+                                     "heavy_timeout": cc.heavy_timeout, "skill_retries": SKILL_RETRIES,
+                                     "debug": os.environ.get("MOIRA_DEBUG") not in (None, "", "0", "false", "False")},
+                          **payload, "live": live, "log": log_tail}
+                return self._send(200, bundle)
             if path.startswith("/api/artifact/"):
                 art_id = path.split("/api/artifact/", 1)[1]
                 rp = ws_repo(store, ws_id)

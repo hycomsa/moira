@@ -70,6 +70,16 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
       await refresh(); setSelected(res.run_id); setStep(null);
     } catch { /* surfaced via run list */ } finally { setRerunBusy(false); }
   };
+  const downloadDebug = async () => {
+    if (!detail) return;
+    const bundle = await api.debugBundle(detail.run.run_id);
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `moira-debug-${detail.run.run_id}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
   const runEval = async () => {
     if (!detail) return;
     setEvalBusy(true);
@@ -209,6 +219,8 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               <Button variant="ghost" size="sm" disabled={evalBusy} onClick={openCompliance}
                 title="Check code compliance against a chosen regulation (GDPR, WCAG, NIS2…)">🛡 Compliance</Button>
               <Button variant="ghost" size="sm" disabled={reportBusy} onClick={genReport}>{reportBusy ? "…" : "⤓ Report"}</Button>
+              <Button variant="ghost" size="sm" onClick={downloadDebug}
+                title="Download a reproducibility bundle: run state, events, live stream (incl. the exact command/prompt when MOIRA_DEBUG=1) + this run's sidecar log">🐞 Debug bundle</Button>
             </div>
             <section className="panel">
               <h3>Execution plan</h3>
@@ -289,7 +301,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                 <div className="log live-log">
                   {liveEvents.map((e, i) => (
                     <div className={"live-row lr-" + e.kind} key={i}>
-                      <span className="lr-ic">{e.kind === "tool" ? "🔧" : e.kind === "result" ? "✓" : "💬"}</span>
+                      <span className="lr-ic">{e.kind === "tool" ? "🔧" : e.kind === "result" ? "✓" : e.kind === "debug" ? "🐞" : "💬"}</span>
                       <span className="lr-text">{e.text}</span>
                     </div>
                   ))}

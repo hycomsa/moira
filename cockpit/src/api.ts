@@ -224,6 +224,8 @@ export const api = {
     fetch(u(`/api/logs?tail=${tail}`)).then(j),
   liveRun: (id: string, from = 0): Promise<LiveState> =>
     fetch(u(`/api/runs/${id}/live?from=${from}`)).then(j),
+  debugBundle: (id: string): Promise<Record<string, unknown>> =>
+    fetch(u(`/api/runs/${id}/debug`)).then(j),
 };
 
 export interface LiveRecord { t: number; node: string; kind: string; text: string; tokens_in?: number; tokens_out?: number; }

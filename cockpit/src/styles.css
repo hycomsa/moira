@@ -146,6 +146,7 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 .live-row .lr-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
 .live-row.lr-tool .lr-text { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); }
 .live-row.lr-result .lr-text { color: #6fdc82; }
+.live-row.lr-debug .lr-text { font-family: var(--font-mono); font-size: 11px; color: var(--muted); opacity: .85; }
 .log-row { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--border); }
 .log-row .seq { color: var(--muted); width: 24px; text-align: right; }
 .log-row .kind { color: var(--accent); width: 110px; flex-shrink: 0; }
