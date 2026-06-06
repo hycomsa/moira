@@ -231,6 +231,42 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               </div>
             </section>
             {(() => {
+              // Outputs rollup: artifacts authored + files changed across all steps
+              const artifacts = [...new Set(detail.audit.map((a) => (a.output as Record<string, unknown>)?.artifact as string).filter(Boolean))];
+              const files = new Map<string, { status: string; add: number; del: number }>();
+              detail.audit.forEach((a) => {
+                ((a.output as Record<string, unknown>)?.files as { path: string; status?: string; additions?: number; deletions?: number }[] | undefined || []).forEach((f) => {
+                  const cur = files.get(f.path) || { status: f.status || "M", add: 0, del: 0 };
+                  files.set(f.path, { status: f.status || cur.status, add: cur.add + (f.additions || 0), del: cur.del + (f.deletions || 0) });
+                });
+              });
+              const fileList = [...files.entries()];
+              if (!artifacts.length && !fileList.length) return null;
+              return (
+                <section className="panel">
+                  <h3>Outputs <span className="muted" style={{ fontSize: 12, textTransform: "none" }}>· what this run produced</span></h3>
+                  {artifacts.length > 0 && (
+                    <div className="out-artifacts">
+                      {artifacts.map((id) => <button key={id} className="chip chip-btn" onClick={() => openArtifact(id)}>📄 {id}</button>)}
+                    </div>
+                  )}
+                  {fileList.length > 0 && (
+                    <ul className="out-files">
+                      {fileList.map(([path, m]) => (
+                        <li key={path}>
+                          <span className={"fstat fstat-" + m.status}>{m.status}</span>
+                          <code>{path}</code>
+                          {m.add > 0 && <span className="add">+{m.add}</span>}
+                          {m.del > 0 && <span className="del">−{m.del}</span>}
+                          {codePath && <a className="open-ed" title="Open in VS Code" href={`vscode://file/${codePath}/${path}`}>↗</a>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              );
+            })()}
+            {(() => {
               const lin = (detail.audit.find((a) => a.lineage?.length)?.lineage || []);
               const fnId = lin.find((l) => l.startsWith("FUNC")) || lin[0] || detail.run.run_id;
               const srcs = lin.filter((l) => l !== fnId);

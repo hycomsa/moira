@@ -415,6 +415,14 @@ button.primary:hover { background: var(--accent2); border-color: var(--accent2);
 .fstat-R { background: #8250df; }            /* renamed  */
 .audit .add { color: #2ea043; font-size: 11px; }
 .audit .del { color: #d1242f; font-size: 11px; }
+
+/* ---- per-run Outputs rollup ---- */
+.out-artifacts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+.out-files { list-style: none; margin: 8px 0 0; padding: 0; }
+.out-files li { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; }
+.out-files li code { color: var(--text); word-break: break-all; }
+.out-files .add { color: #2ea043; font-size: 11px; }
+.out-files .del { color: #d1242f; font-size: 11px; }
 details.patch { margin-top: 6px; }
 details.patch summary { cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; }
 details.patch summary:hover { color: var(--text); }
