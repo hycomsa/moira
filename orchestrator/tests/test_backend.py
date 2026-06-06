@@ -126,6 +126,34 @@ class TestBudgetTiers(unittest.TestCase):
             del os.environ["MOIRA_CLAUDE_SKILL_TIMEOUT"]
 
 
+class TestSkillInlining(unittest.TestCase):
+    """skill prompt inlines SKILL.md as a task (not a /slash invocation)."""
+
+    def _prompt(self, cwd):
+        from moira_core.models import Node, NodeType
+        node = Node(id="a", name="ba@x", type=NodeType.PRODUCER, backend="claude_code",
+                    role="ba-skill", skill="ba@shape-intent-spec", skill_input="driver onboarding")
+        return B()._build_prompt(node, {"cwd": cwd})
+
+    def test_inlines_playbook_when_skill_md_present(self):
+        import tempfile, os, pathlib
+        d = tempfile.mkdtemp()
+        sk = pathlib.Path(d, ".agents", "skills", "ba@shape-intent-spec")
+        sk.mkdir(parents=True)
+        (sk / "SKILL.md").write_text("---\nname: ba@shape-intent-spec\n---\n# Shape Intent\nDo the steps.\n")
+        p = self._prompt(d)
+        self.assertIn("Follow its playbook", p)
+        self.assertIn("Do the steps.", p)            # body inlined
+        self.assertNotIn("name: ba@shape-intent-spec", p)  # frontmatter stripped
+        self.assertIn("driver onboarding", p)         # input
+        self.assertIn("non-interactive", p)           # execution directive
+        self.assertNotIn("/ba@shape-intent-spec", p)  # NOT a slash invocation
+
+    def test_falls_back_to_slash_when_missing(self):
+        p = self._prompt("/nonexistent")
+        self.assertIn("/ba@shape-intent-spec driver onboarding", p)
+
+
 class TestStreamReduce(unittest.TestCase):
     """stream-json NDJSON → live records + final result envelope."""
 

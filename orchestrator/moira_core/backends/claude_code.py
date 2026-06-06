@@ -51,6 +51,15 @@ class ClaudeCodeBackend:
     AUTONOMY = ("Work autonomously end-to-end. If a planning, brainstorming, or review skill would "
                 "normally pause to ask the user, make reasonable assumptions, state them briefly, and "
                 "proceed — never stop and wait for confirmation. Finish by leaving the working tree edited.")
+    # Appended when we inline a skill's playbook (instead of a /slash invocation, which Claude Code
+    # only honors interactively). Makes the skill actually execute headless and write its artifacts.
+    SKILL_EXEC = ("=== EXECUTION (non-interactive) ===\n"
+                  "Work autonomously end-to-end in the CURRENT repository. Read whatever context the "
+                  "playbook needs (standards, existing specs, referenced files under .agents/ or .ai/), "
+                  "then CREATE or EDIT the artifact files the playbook specifies — apply changes directly "
+                  "to disk with your tools. Do NOT stop to ask questions and do NOT merely propose; make "
+                  "reasonable assumptions, note them, and proceed. End with a 1-2 line summary of the files "
+                  "you created or changed.")
 
     def __init__(self, binary: str = "claude", timeout: int | None = None,
                  permission_mode: str = "acceptEdits", max_turns: int | None = None,
@@ -78,6 +87,23 @@ class ClaudeCodeBackend:
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
 
+    @staticmethod
+    def _load_skill_playbook(skill: str, cwd: str | None) -> str | None:
+        """Read a skill's SKILL.md body (frontmatter stripped) from the repo so we can
+        inline it as a task prompt. None if not found (caller falls back to /slash)."""
+        if not skill or not cwd:
+            return None
+        path = os.path.join(cwd, ".agents", "skills", skill, "SKILL.md")
+        try:
+            text = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            return None
+        if text.startswith("---"):
+            parts = text.split("---", 2)
+            if len(parts) >= 3:
+                text = parts[2]
+        return text.strip() or None
+
     def _build_prompt(self, node: Node, context: dict[str, Any]) -> str:
         if (node.role in self.EVAL_ROLES) or context.get("eval_kind"):
             # LLM-as-judge: build a scorecard prompt; the contract still wraps the
@@ -89,14 +115,29 @@ class ClaudeCodeBackend:
                 context.get("eval_criteria"),
             )
         if node.skill:
-            # Discovery/BA: invoke an AI SDLC framework skill (slash-command), with
-            # the user's elaboration appended. The skill authors artifacts in cwd.
-            # auto-chain: an empty skill_input inherits the prior step's artifact id
+            # Discovery/BA: drive an AI SDLC framework skill. We INLINE the skill's
+            # SKILL.md playbook as a normal task (slash-command /skill invocation is
+            # interactive-only in `claude -p`, so it fails headless). The skill then
+            # authors artifacts in cwd. auto-chain: empty skill_input inherits the
+            # prior step's produced artifact id.
             inp = node.skill_input or context.get("produced_artifact", "") or node.spec_ref or context.get("func_id", "")
-            line = f"/{node.skill} {inp}".strip()
-            parts = [p for p in [(node.prompt_extra or "").strip(),
+            extra = [p for p in [(node.prompt_extra or "").strip(),
                                  (context.get("feedback", {}).get(node.id, "") or "").strip()] if p]
-            return line + ("\n\n" + "\n\n".join(parts) if parts else "")
+            playbook = self._load_skill_playbook(node.skill, context.get("cwd"))
+            if playbook:
+                sections = [
+                    f'You are executing the AI SDLC skill "{node.skill}". Follow its playbook exactly.',
+                    f"=== PLAYBOOK ({node.skill}/SKILL.md) ===\n{playbook}",
+                ]
+                if inp:
+                    sections.append(f"=== INPUT ===\n{inp}")
+                if extra:
+                    sections.append("=== ADDITIONAL GUIDANCE ===\n" + "\n\n".join(extra))
+                sections.append(self.SKILL_EXEC)
+                return "\n\n".join(sections)
+            # fallback: slash-command invocation (skill not found on disk)
+            line = f"/{node.skill} {inp}".strip()
+            return line + ("\n\n" + "\n\n".join(extra) if extra else "")
         return contract.build_stage_prompt(
             role=node.role or node.id, spec_ref=node.spec_ref,
             spec_text=context.get("spec_text", ""),
