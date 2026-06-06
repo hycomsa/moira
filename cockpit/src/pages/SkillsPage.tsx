@@ -36,6 +36,13 @@ const PRESETS: Preset[] = [
     desc: "Business then technical review of an existing func-spec.",
     steps: [{ skill: "ba@review-func-spec-po", persona: "po" },
             { skill: "ba@review-func-spec-arch", persona: "architect" }] },
+  { id: "func-test-plan", name: "Func-spec → Test plan",
+    desc: "Derive a traceable test plan (one+ case per acceptance criterion, Given/When/Then) from an existing func-spec. Topic = FUNC-ID (e.g. FUNC-APP-onboarding).",
+    steps: [{ skill: "qa@author-test-plan", persona: "lead-dev" }] },
+  { id: "func-validate-tests", name: "Func-spec → Validate → Test plan",
+    desc: "Validate a func-spec's quality, then turn its acceptance criteria into a traceable test plan. Topic = FUNC-ID.",
+    steps: [{ skill: "ba@validate-func-spec", persona: "architect" },
+            { skill: "qa@author-test-plan", persona: "lead-dev" }] },
 ];
 
 export function SkillsPage({ onOpenRun }: { onOpenRun?: (runId: string) => void } = {}) {
