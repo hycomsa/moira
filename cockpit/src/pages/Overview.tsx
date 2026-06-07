@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, getBudget, setBudget, type ActivityRow, type InboxItem, type RunSummary, type SpendRollup, type Stats } from "../api";
+import { api, getBudget, setBudget, type ActivityRow, type InboxItem, type RunSummary, type SpendRollup, type Stats, type TraceFunc } from "../api";
 import { Metrics, fmtDur, fmtTokens } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
 
@@ -40,6 +40,7 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
   const [counts, setCounts] = useState<{ agents: number; pipelines: number }>({ agents: 0, pipelines: 0 });
   const [spend, setSpend] = useState<SpendRollup | null>(null);
   const [budget, setBudgetState] = useState<number>(getBudget());
+  const [funcs, setFuncs] = useState<TraceFunc[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -52,6 +53,7 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
     Promise.all([api.agents(), api.pipelines()])
       .then(([ag, pp]) => setCounts({ agents: ag.agents.length, pipelines: pp.pipelines.length }))
       .catch(() => { /* */ });
+    api.traceability().then((d) => setFuncs(d.funcs)).catch(() => { /* */ });  // delivery health (load once)
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, []);
@@ -156,6 +158,45 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
           <span className="fleet-item" title="total tokens">⛁ {fmtTokens(fleet.tok)} tokens</span>
         </div>
       </section>
+
+      {/* delivery health — per-FUNC lifecycle across the workspace */}
+      {funcs.length > 0 && (
+        <section className="panel glass">
+          <div className="panel-head"><h3>Delivery health</h3>
+            <button className="link" onClick={() => onNavigate("trace")}>Traceability →</button></div>
+          <div className="dh-grid">
+            <div className="dh-row dh-head">
+              <span className="dh-name">Func-spec</span>
+              <span>Decomposed</span><span>Tested</span><span>Built</span><span className="dh-llm">Conformance</span>
+            </div>
+            {[...funcs].sort((a, b) => (a.completeness?.build_pct ?? 0) - (b.completeness?.build_pct ?? 0)).map((f) => {
+              const c = f.completeness;
+              if (!c) return null;
+              const frac = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
+              const cell = (n: number, d: number) => {
+                const lv = d > 0 && n >= d ? "lv-complete" : n > 0 ? "lv-partial" : "lv-none";
+                return (
+                  <span className="dh-cell">
+                    <span className="tr-bar"><span className={"tr-fill " + lv} style={{ width: frac(n, d) + "%" }} /></span>
+                    <i>{n}/{d}</i>
+                  </span>
+                );
+              };
+              return (
+                <div className="dh-row" key={f.id} onClick={() => onNavigate("trace")} title={f.title}>
+                  <span className="dh-name">{f.id}</span>
+                  {cell(c.ac.in_tasks, c.ac.total)}
+                  {cell(c.ac.tested, c.ac.total)}
+                  {cell(c.tasks.done, c.tasks.total)}
+                  <span className="dh-llm">{f.conformance
+                    ? <span className={"trace-badge " + (f.conformance.overall >= 0.8 ? "ok" : f.conformance.overall >= 0.5 ? "warn" : "legacy")}>⚖ {Math.round(f.conformance.overall * 100)}%</span>
+                    : <span className="muted small">—</span>}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* two columns */}
       <div className="ov-grid">

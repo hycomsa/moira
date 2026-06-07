@@ -406,9 +406,11 @@ def traceability(store: Store, ws_id: str) -> list[dict]:
         text = repo.read_func_spec(fid) or ""
         title = next((ln.lstrip("# ").strip() for ln in text.splitlines()
                       if ln.startswith("#")), fid)
+        conf = last_conformance(store, ws_id, fid)
         out.append({"id": fid, "title": title, "lineage": repo.trace_lineage(text, fid),
                     "runs": runs_by_func.get(fid, []),
-                    "completeness": task_model.completeness(repo, fid)})
+                    "completeness": task_model.completeness(repo, fid),
+                    "conformance": conf and {"overall": conf["overall"]}})
     return out
 
 

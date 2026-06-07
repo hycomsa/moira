@@ -950,6 +950,19 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .tr-conf-gaps li { margin: 2px 0; }
 .tr-conf .chip-btn { align-self: flex-start; }
 
+/* ---- delivery health (Overview) ---- */
+.dh-grid { display: flex; flex-direction: column; gap: 4px; }
+.dh-row { display: grid; grid-template-columns: minmax(160px, 1.4fr) 1fr 1fr 1fr 110px; align-items: center;
+  gap: 12px; padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+.dh-row:not(.dh-head) { cursor: pointer; }
+.dh-row:not(.dh-head):hover { background: var(--panel2); }
+.dh-head { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; cursor: default; }
+.dh-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-cell { display: flex; align-items: center; gap: 8px; }
+.dh-cell .tr-bar { flex: 1; }
+.dh-cell i { font-style: normal; color: var(--muted); font-size: 11px; min-width: 34px; text-align: right; }
+.dh-llm { text-align: right; }
+
 /* traceability graph */
 .trace-head-bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; }
 .trace-graph-page { display: flex; flex-direction: column; height: 100%; }

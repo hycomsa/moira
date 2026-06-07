@@ -155,7 +155,7 @@ export interface Completeness {
   ac: { total: number; in_tasks: number; done: number; tested: number };
   build_pct: number; level: "complete" | "partial" | "none";
 }
-export interface TraceFunc { id: string; title: string; lineage: string[]; runs: RunMetrics[]; completeness?: Completeness; }
+export interface TraceFunc { id: string; title: string; lineage: string[]; runs: RunMetrics[]; completeness?: Completeness; conformance?: { overall: number } | null; }
 export interface Traceability {
   available: boolean; func_id: string | null;
   spec?: { present: boolean; title: string | null };
