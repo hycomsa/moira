@@ -79,13 +79,17 @@ async function load(){
   } catch(e){ document.getElementById("list").innerHTML = '<div class="empty">Can\'t reach Moira sidecar.</div>'; }
 }
 
+function grchip(txt,color){return `<span style="border:1px solid ${color}55;color:${color};border-radius:7px;padding:1px 7px;font-size:11px;white-space:nowrap">${txt}</span>`;}
 function card(it){
   const checks = (it.checks||[]).map(c =>
     `<div class="check"><span class="dot" style="background:${COLOR[c.status]||'#8b949e'}"></span>
      <span class="cname">${esc(c.name)}</span><span class="csum">${esc(c.summary)}</span></div>`).join("");
+  const gr = it.gate_review||{};
+  const cov = gr.coverage ? (a=>{const ok=a.total>0&&a.in_tasks>=a.total;return grchip(`${ok?'✓':'⚠'} AC ${a.in_tasks}/${a.total}`,ok?'#3fb950':'#d29922');})(gr.coverage.ac) : "";
+  const conf = gr.conformance ? grchip(`⚖ ${Math.round(gr.conformance.overall*100)}%`, gr.conformance.overall>=0.8?'#3fb950':gr.conformance.overall>=0.5?'#d29922':'#8b949e') : "";
   return `<div class="card" data-run="${esc(it.run_id)}">
     <div class="ch">${it.persona?`<span class="persona">${esc(it.persona)}</span>`:""}
-      <span class="pipe">${esc(it.pipeline)}</span><span class="ws">· ${esc(it.workspace)}</span></div>
+      <span class="pipe">${esc(it.pipeline)}</span><span class="ws">· ${esc(it.workspace)}</span>${cov}${conf}</div>
     <div class="msg">${esc(it.message)}</div>
     ${checks?`<div class="sec">Checks feeding this gate</div>${checks}`:""}
     <div class="meta">

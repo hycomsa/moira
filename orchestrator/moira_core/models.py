@@ -159,6 +159,7 @@ class Node:
     max_retries: int = 2                   # retry-N-then-gate
     depends_on: list[str] = field(default_factory=list)  # DAG predecessors (empty -> linear by order)
     check_cmd: str = ""                    # AUTO_CHECK: shell command to run in cwd
+    check_kind: str = ""                   # AUTO_CHECK: built-in check (e.g. "ac_coverage"); "" -> shell
     # Discovery/BA: drive an AI SDLC framework skill (e.g. ba@shape-func-spec) to
     # author/refine an artifact in the repo, optionally specialized by prompt_extra.
     skill: str = ""                        # skill id, e.g. "ba@shape-func-spec"
@@ -172,7 +173,7 @@ class Node:
             "spec_ref": self.spec_ref,
             "gate": self.gate.to_dict() if self.gate else None,
             "on_reject_goto": self.on_reject_goto, "max_retries": self.max_retries,
-            "depends_on": self.depends_on, "check_cmd": self.check_cmd,
+            "depends_on": self.depends_on, "check_cmd": self.check_cmd, "check_kind": self.check_kind,
             "skill": self.skill, "skill_input": self.skill_input, "prompt_extra": self.prompt_extra,
         }
 
@@ -185,6 +186,7 @@ class Node:
             gate=GateConfig.from_dict(d["gate"]) if d.get("gate") else None,
             on_reject_goto=d.get("on_reject_goto"), max_retries=d.get("max_retries", 2),
             depends_on=d.get("depends_on") or [], check_cmd=d.get("check_cmd", ""),
+            check_kind=d.get("check_kind", ""),
             skill=d.get("skill", ""), skill_input=d.get("skill_input", ""),
             prompt_extra=d.get("prompt_extra", ""),
         )

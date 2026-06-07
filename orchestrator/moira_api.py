@@ -381,7 +381,9 @@ def mobile_inbox(store: Store) -> list[dict]:
             w = next((e for e in reversed(evs) if e["kind"] in ("gate.wait", "node.escalate")), None)
             out.append({"run_id": r["run_id"], "workspace": ws["name"], "pipeline": r["pipeline_id"],
                         "persona": g_in.get("persona", ""), "message": w["message"] if w else "",
-                        "checks": checks, "changed_files": files, **run_metrics(store, r["run_id"])})
+                        "checks": checks, "changed_files": files,
+                        "gate_review": gate_review_for(store, r["run_id"], ws["id"]),
+                        **run_metrics(store, r["run_id"])})
     return out
 
 
@@ -426,6 +428,23 @@ def last_conformance(store: Store, ws_id: str, func_id: str | None) -> dict | No
                 "criteria": sc.get("criteria", []), "missing": sc.get("missing", []),
                 "parsed": sc.get("parsed")}
     return None
+
+
+def gate_review_for(store: Store, run_id: str, fallback_ws: str) -> dict | None:
+    """Decision-ready summary for a pending gate: AC coverage/completeness + last LLM conformance."""
+    fid = func_id_for_run(store, run_id)
+    if not fid:
+        return None
+    ws = (store.get_run(run_id) or {}).get("workspace_id") or fallback_ws
+    rp = ws_repo(store, ws)
+    repo = AISdlcRepo(rp) if rp else None
+    cov = task_model.completeness(repo, fid) if (repo and repo.exists()) else None
+    conf = last_conformance(store, ws, fid)
+    if not cov and not conf:
+        return None
+    return {"func_id": fid,
+            "coverage": cov and {"level": cov["level"], "ac": cov["ac"], "tasks": cov["tasks"]},
+            "conformance": conf and {"overall": conf["overall"]}}
 
 
 def func_id_for_run(store: Store, run_id: str) -> str | None:
@@ -571,7 +590,8 @@ class Handler(BaseHTTPRequestHandler):
                                   "persona": g_in.get("persona", ""),
                                   "audience": g_in.get("audience", "technical"),
                                   "consumes": g_in.get("consumes", []),
-                                  "review": g_in.get("review", {})})
+                                  "review": g_in.get("review", {}),
+                                  "gate_review": gate_review_for(store, r["run_id"], ws_id)})
                 return self._send(200, {"inbox": items})
             if path == "/api/stats":
                 runs = store.list_runs(ws_id)
@@ -947,15 +967,27 @@ class Handler(BaseHTTPRequestHandler):
                 prev_gate = None
                 for i, s in enumerate(steps):
                     aid, gid = f"author{i}", f"review{i}"
+                    persona = s.get("persona", "ba")
                     nodes.append(Node(id=aid, name=s["skill"], type=NodeType.PRODUCER,
                                       backend="claude_code", role="ba-skill", skill=s["skill"],
                                       skill_input=s.get("input", ""), prompt_extra=s.get("elaboration", ""),
                                       spec_ref=s.get("input", ""), max_retries=SKILL_RETRIES,
                                       depends_on=[prev_gate] if prev_gate else []))
+                    review_dep = aid
+                    if s["skill"] == "pm@decompose-func":
+                        # deterministic AC-coverage check → AUTO gate: 100% auto-approves and flows to the
+                        # human quality gate; < 100% escalates to a human with the failing finding.
+                        cid, covg = f"check{i}", f"cov{i}"
+                        nodes.append(Node(id=cid, name=f"AC coverage · {s.get('input','')}",
+                                          type=NodeType.AUTO_CHECK, check_kind="ac_coverage",
+                                          spec_ref=s.get("input", ""), depends_on=[aid]))
+                        nodes.append(Node(id=covg, name="AC coverage gate", type=NodeType.GATE,
+                                          gate=GateConfig(mode=GateMode.AUTO, persona=persona, consumes=[cid]),
+                                          depends_on=[cid], on_reject_goto=aid))
+                        review_dep = covg
                     nodes.append(Node(id=gid, name=f"Review · {s['skill']}", type=NodeType.GATE,
-                                      gate=GateConfig(mode=GateMode.HUMAN, persona=s.get("persona", "ba"),
-                                                      consumes=[aid]),
-                                      depends_on=[aid], on_reject_goto=aid))
+                                      gate=GateConfig(mode=GateMode.HUMAN, persona=persona, consumes=[aid]),
+                                      depends_on=[review_dep], on_reject_goto=aid))
                     prev_gate = gid
                 name = (body.get("name") or ("Discovery · " + " → ".join(s["skill"] for s in steps)))[:80]
                 pid = "discovery-" + _re.sub(r"[^a-z0-9]+", "-", "-".join(s["skill"] for s in steps).lower()).strip("-")[:60]

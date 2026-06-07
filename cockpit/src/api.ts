@@ -64,6 +64,11 @@ export interface InboxItem {
   audience?: string;
   consumes?: string[];
   review?: Record<string, Record<string, unknown>>;
+  gate_review?: {
+    func_id: string;
+    coverage?: { level: string; ac: { total: number; in_tasks: number; done: number; tested: number }; tasks: { total: number; done: number } } | null;
+    conformance?: { overall: number } | null;
+  } | null;
 }
 
 // Under the Tauri shell the frontend is served from the embedded asset protocol,

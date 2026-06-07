@@ -35,6 +35,76 @@ class SlowBackend:
         return BackendResult(output={"n": node.id}, ok=True, cost=Cost())
 
 
+class TestAcCoverageCheck(unittest.TestCase):
+    """AUTO_CHECK check_kind='ac_coverage' — deterministic AC-coverage gate after decompose."""
+
+    def _repo(self, task_acs):
+        from pathlib import Path
+        root = Path(tempfile.mkdtemp())
+        fs = root / ".ai" / "context" / "func-specs" / "FUNC-X"
+        fs.mkdir(parents=True)
+        (fs / "func-spec.md").write_text(
+            "# FUNC-X\n**AC-X-01-01:** a\n**AC-X-01-02:** b\n**AC-X-02-01:** c\n", encoding="utf-8")
+        bl = root / "backlog" / "func-x"
+        bl.mkdir(parents=True)
+        (bl / "epic-func-x.md").write_text(
+            "---\nid: epic-func-x\ntype: epic\nstatus: todo\nsource_func: FUNC-X\n---\n", encoding="utf-8")
+        for i, acs in enumerate(task_acs, 1):
+            (bl / f"PROJ-{i}.md").write_text(
+                f"---\nid: PROJ-{i}\ntype: task\nstatus: todo\nparent_epic_id: epic-func-x\n"
+                f"acceptance_criteria: [{', '.join(acs)}]\n---\n", encoding="utf-8")
+        return str(root)
+
+    def _check(self, cwd):
+        eng, _ = engine()
+        node = Node(id="cov", name="cov", type=NodeType.AUTO_CHECK, check_kind="ac_coverage", spec_ref="FUNC-X")
+        return eng._run_ac_coverage_check(node, {"cwd": cwd})
+
+    def test_full_coverage_passes(self):
+        res = self._check(self._repo([["AC-X-01-01", "AC-X-01-02"], ["AC-X-02-01"]]))  # 3/3
+        self.assertTrue(res.output["passed"])
+        self.assertFalse(res.has_blocking())     # INFO, not blocking
+
+    def test_partial_coverage_fails_blocking(self):
+        res = self._check(self._repo([["AC-X-01-01"]]))  # 1/3
+        self.assertFalse(res.output["passed"])
+        self.assertTrue(res.has_blocking())       # HIGH -> downstream AUTO gate escalates
+
+    def test_no_acceptance_criteria_fails(self):
+        from pathlib import Path
+        root = Path(tempfile.mkdtemp())
+        (root / ".ai" / "context" / "func-specs").mkdir(parents=True)
+        res = self._check(str(root))
+        self.assertFalse(res.output["passed"])
+
+    def _pipe(self):
+        # mirrors the discovery builder for pm@decompose-func: author → check → AUTO cov-gate → HUMAN review
+        return Pipeline(id="dec", name="dec", nodes=[
+            Node(id="impl", name="impl", type=NodeType.PRODUCER, backend="mock", spec_ref="FUNC-X"),
+            Node(id="check", name="AC coverage", type=NodeType.AUTO_CHECK, check_kind="ac_coverage",
+                 spec_ref="FUNC-X", depends_on=["impl"]),
+            Node(id="cov", name="AC coverage gate", type=NodeType.GATE, depends_on=["check"],
+                 on_reject_goto="impl", gate=GateConfig(mode=GateMode.AUTO, consumes=["check"])),
+            Node(id="review", name="review", type=NodeType.GATE, depends_on=["cov"],
+                 on_reject_goto="impl", gate=GateConfig(mode=GateMode.HUMAN, consumes=["impl"])),
+        ])
+
+    def _run(self, task_acs):
+        eng, _ = engine()
+        ctx = {"cwd": self._repo(task_acs), "spec_text": "x", "lineage": [], "func_id": "FUNC-X"}
+        return eng.start(self._pipe(), ctx)
+
+    def test_full_coverage_flows_to_human_review(self):
+        res = self._run([["AC-X-01-01", "AC-X-01-02"], ["AC-X-02-01"]])   # 3/3
+        self.assertEqual(res.status, Status.WAITING_GATE)
+        self.assertEqual(res.waiting_node, "review")   # cov auto-approved → human reviews quality
+
+    def test_partial_coverage_escalates_at_cov_gate(self):
+        res = self._run([["AC-X-01-01"]])              # 1/3
+        self.assertEqual(res.status, Status.WAITING_GATE)
+        self.assertEqual(res.waiting_node, "cov")      # incomplete → escalate before the human gate
+
+
 class TestParallel(unittest.TestCase):
     def test_independent_nodes_run_concurrently(self):
         be = SlowBackend()

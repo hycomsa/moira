@@ -250,6 +250,40 @@ class Engine:
         return {"result": None, "errors": errors, "start": start, "end": time.time(), "attempts": attempts}
 
     def _run_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
+        """AUTO_CHECK: built-in deterministic check (check_kind) or a shell command."""
+        if node.check_kind == "ac_coverage":
+            return self._run_ac_coverage_check(node, context)
+        return self._run_shell_check(node, context)
+
+    def _run_ac_coverage_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
+        """Deterministic gate: every acceptance criterion of the FUNC must be covered by a task.
+
+        Reads the just-authored backlog from cwd and compares against the func-spec's ACs (the same
+        `tasks.completeness` the traceability badge uses). 100% -> INFO (pass); < 100% -> HIGH (fail),
+        which makes the downstream AUTO gate escalate to a human."""
+        from .repo_reader import AISdlcRepo
+        from . import tasks
+        func_id = node.spec_ref or context.get("func_id", "")
+        cwd = context.get("cwd")
+        try:
+            comp = tasks.completeness(AISdlcRepo(cwd), func_id) if cwd else None
+            total = comp["ac"]["total"] if comp else 0
+            covered = comp["ac"]["in_tasks"] if comp else 0
+            ntasks = comp["tasks"]["total"] if comp else 0
+            ok = total > 0 and covered >= total
+            detail = (f"AC coverage {covered}/{total} across {ntasks} tasks for {func_id}"
+                      if total else f"no acceptance criteria found for {func_id}")
+        except Exception as e:  # noqa: BLE001
+            ok, detail = False, f"coverage check error: {e}"
+        sev = Severity.INFO if ok else Severity.HIGH
+        finding = Finding(id=node.id, confidence=1.0, severity=sev,
+                          title=("AC coverage complete" if ok else "AC coverage incomplete"),
+                          detail=detail)
+        return BackendResult(output={"check": "ac_coverage", "passed": ok, "detail": detail},
+                             tools_used=["ac_coverage"], decisions=[detail],
+                             findings=[finding], cost=Cost(), ok=True)
+
+    def _run_shell_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
         """AUTO_CHECK: run a real command; exit 0 = pass (INFO), non-zero = fail (HIGH)."""
         cmd = node.check_cmd or "true"
         cwd = context.get("cwd")

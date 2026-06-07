@@ -70,6 +70,16 @@ function DecisionCard({ it, codePath, onDecided }: {
       <div className="dc-head">
         <span className={"aud-tag " + (isClient ? "client" : "tech")}>{isClient ? "client gate" : "quality gate"}</span>
         {it.persona && <span className="persona-tag">{it.persona}</span>}
+        {it.gate_review?.coverage && (() => {
+          const c = it.gate_review!.coverage!;
+          const ok = c.ac.total > 0 && c.ac.in_tasks >= c.ac.total;
+          return <span className={"trace-badge " + (ok ? "ok" : "warn")} title={`tasks ${c.tasks.done}/${c.tasks.total} done · AC covered by tasks`}>
+            {ok ? "✓" : "⚠"} AC {c.ac.in_tasks}/{c.ac.total}</span>;
+        })()}
+        {it.gate_review?.conformance && (
+          <span className={"trace-badge " + (it.gate_review.conformance.overall >= 0.8 ? "ok" : it.gate_review.conformance.overall >= 0.5 ? "warn" : "legacy")}
+                title="last LLM conformance (spec ↔ code)">⚖ {Math.round(it.gate_review.conformance.overall * 100)}%</span>
+        )}
         <div className="dc-titles">
           <div className="dc-title">{it.message || "Decision required"}</div>
           <div className="dc-sub">{det?.pipeline.name || it.run_id.replace("run-", "")} · <code>{it.run_id.replace("run-", "").slice(0, 10)}</code></div>
