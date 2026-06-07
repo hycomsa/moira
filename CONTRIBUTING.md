@@ -129,14 +129,16 @@ big budget. Current values are shown in `GET /api/health` (`config`).
 
 | Env var | Default | Applies to |
 |---|---|---|
-| `MOIRA_CLAUDE_SKILL_TIMEOUT` | `240` s | discovery skill nodes (`ba@*`/`arch@*`) |
-| `MOIRA_CLAUDE_SKILL_MAX_TURNS` | `12` | discovery skill nodes |
+| `MOIRA_CLAUDE_SKILL_TIMEOUT` | `300` s | discovery/authoring skill nodes (`ba@*`/`pm@*`/`qa@*`) |
+| `MOIRA_CLAUDE_SKILL_MAX_TURNS` | `20` | skill nodes — enough turns for multi-file authoring (decompose/test-plan) |
 | `MOIRA_SKILL_RETRIES` | `1` | skill retries before escalating (1 = 2 attempts) |
 | `MOIRA_CLAUDE_TIMEOUT` / `MOIRA_CLAUDE_MAX_TURNS` | `600` s / `12` | default (analysts, verifiers, evals) |
 | `MOIRA_CLAUDE_HEAVY_TIMEOUT` / `MOIRA_CLAUDE_HEAVY_MAX_TURNS` | `1800` s / `40` | coding (`code-generator`, `superpowers-coder`) |
 
-So a broken skill escalates after `skill_timeout × (skill_retries + 1)` ≈ 8 min. Set e.g.
-`MOIRA_CLAUDE_SKILL_TIMEOUT=120 MOIRA_SKILL_RETRIES=0` for aggressive fail-fast.
+So a broken skill escalates after `skill_timeout × (skill_retries + 1)` ≈ 10 min. The turn budget (20)
+doesn't affect a *hung* skill — the watchdog kills on time — so raising turns keeps fail-fast intact while
+letting healthy multi-file authoring skills finish. Set e.g. `MOIRA_CLAUDE_SKILL_TIMEOUT=120
+MOIRA_SKILL_RETRIES=0` for aggressive fail-fast, or bump `MOIRA_CLAUDE_SKILL_MAX_TURNS` for very large specs.
 
 ## Conventions
 

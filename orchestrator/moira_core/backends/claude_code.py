@@ -92,8 +92,11 @@ class ClaudeCodeBackend:
         self.max_turns = max_turns if max_turns is not None else _env("MOIRA_CLAUDE_MAX_TURNS", 12)
         self.heavy_timeout = heavy_timeout if heavy_timeout is not None else _env("MOIRA_CLAUDE_HEAVY_TIMEOUT", 1800)
         self.heavy_max_turns = heavy_max_turns if heavy_max_turns is not None else _env("MOIRA_CLAUDE_HEAVY_MAX_TURNS", 40)
-        self.skill_timeout = skill_timeout if skill_timeout is not None else _env("MOIRA_CLAUDE_SKILL_TIMEOUT", 240)
-        self.skill_max_turns = skill_max_turns if skill_max_turns is not None else _env("MOIRA_CLAUDE_SKILL_MAX_TURNS", 12)
+        # skill budget: turns raised to 20 so multi-file authoring skills (pm@decompose-func,
+        # qa@author-test-plan, ba@shape-func-spec) can write all their artifacts; timeout 300s still
+        # bounds a hung skill (turns don't affect a hang — the watchdog kills on time), so fail-fast holds.
+        self.skill_timeout = skill_timeout if skill_timeout is not None else _env("MOIRA_CLAUDE_SKILL_TIMEOUT", 300)
+        self.skill_max_turns = skill_max_turns if skill_max_turns is not None else _env("MOIRA_CLAUDE_SKILL_MAX_TURNS", 20)
 
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
