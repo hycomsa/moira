@@ -944,6 +944,11 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .tr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .tr-mini { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .tr-mini .tr-bar { max-width: 120px; }
+.tr-conf { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.tr-conf-sum { font-size: 12px; margin: 2px 0 0; line-height: 1.45; }
+.tr-conf-gaps { margin: 2px 0 0; padding-left: 16px; font-size: 11.5px; color: var(--muted); }
+.tr-conf-gaps li { margin: 2px 0; }
+.tr-conf .chip-btn { align-self: flex-start; }
 
 /* traceability graph */
 .trace-head-bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; }

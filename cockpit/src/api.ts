@@ -157,6 +157,7 @@ export interface Traceability {
   tests?: { present: boolean; ac_covered: number; ac_total: number };
   tasks?: Completeness | null;
   lineage?: { present: boolean; refs: string[]; resolved: number };
+  conformance?: { run_id: string; overall: number; summary: string; criteria: ScoreCriterion[]; missing: string[]; parsed: boolean } | null;
 }
 export interface ReportResult { markdown: string; committed: boolean; path: string | null; }
 export interface ChainStatus { ok: boolean; sealed: boolean; length: number; broken_at: number | null; head: string; }

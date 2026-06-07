@@ -34,6 +34,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [codePath, setCodePath] = useState<string | undefined>();
   const [chain, setChain] = useState<ChainStatus | null>(null);
   const [trace, setTrace] = useState<Traceability | null>(null);
+  const [confBusy, setConfBusy] = useState(false);
   const [evalRes, setEvalRes] = useState<EvalResult | null>(null);
   const [evalBusy, setEvalBusy] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
@@ -86,6 +87,12 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
     a.download = `moira-debug-${detail.run.run_id}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+  const runConformance = async () => {
+    if (!trace?.func_id) return;
+    setConfBusy(true);
+    try { await api.evalConformance(trace.func_id); if (selected) setTrace(await api.runTraceability(selected)); }
+    catch { /* surfaced via run list */ } finally { setConfBusy(false); }
   };
   const runEval = async () => {
     if (!detail) return;
@@ -232,6 +239,12 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                 ].filter(Boolean).join(" · ");
                 return <span className={"trace-badge " + cls} title={title}>{label}</span>;
               })()}
+              {trace?.available && getTraceMode() !== "structural" && trace.conformance && (() => {
+                const o = trace.conformance.overall;
+                const cls = o >= 0.8 ? "ok" : o >= 0.5 ? "warn" : "legacy";
+                return <span className={"trace-badge " + cls} title={trace.conformance.summary || "LLM conformance (spec ↔ code)"}>
+                  ⚖ {Math.round(o * 100)}%</span>;
+              })()}
               <span className="grow1" />
               <Button variant="ghost" size="sm" disabled={rerunBusy} onClick={rerun}
                 title="Re-run this pipeline as a fresh run (same inputs)">{rerunBusy ? "…" : "↻ Re-run"}</Button>
@@ -324,6 +337,26 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                     {fid && <button className="chip chip-btn func" onClick={() => openArtifact(fid)}>📄 {fid}</button>}
                     {(trace.lineage?.refs || []).map((id) => <button key={id} className="chip chip-btn" onClick={() => openArtifact(id)}>{id}</button>)}
                   </div>
+                  {getTraceMode() !== "structural" && (
+                    <div className="tr-conf">
+                      {trace.conformance ? (
+                        <>
+                          <Bar label="⚖ LLM" frac={trace.conformance.overall}
+                               val={`${Math.round(trace.conformance.overall * 100)}% conformance`} />
+                          {trace.conformance.summary && <p className="tr-conf-sum muted">{trace.conformance.summary}</p>}
+                          {(trace.conformance.missing || []).length > 0 && (
+                            <ul className="tr-conf-gaps">{trace.conformance.missing.slice(0, 4).map((m, i) => <li key={i}>{m}</li>)}</ul>
+                          )}
+                          <button className="chip chip-btn" disabled={confBusy} onClick={runConformance}>{confBusy ? "scoring…" : "↻ re-run conformance"}</button>
+                        </>
+                      ) : (
+                        <div className="tr-row">
+                          <span className="muted small" style={{ flex: 1 }}>No LLM conformance score yet (spec ↔ code).</span>
+                          <button className="chip chip-btn" disabled={confBusy} onClick={runConformance}>{confBusy ? "scoring…" : "⚖ Run conformance"}</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </section>
               );
             })()}

@@ -410,6 +410,24 @@ def traceability(store: Store, ws_id: str) -> list[dict]:
     return out
 
 
+def last_conformance(store: Store, ws_id: str, func_id: str | None) -> dict | None:
+    """Most recent conformance scorecard (LLM judge) for a FUNC, if any was ever run."""
+    if not func_id:
+        return None
+    from moira_core.evals import normalize_scorecard
+    for r in store.list_runs(ws_id):  # DESC → first match is newest
+        if r.get("pipeline_id") != "eval-conformance":
+            continue
+        rec = next((a for a in store.audit_records(r["run_id"]) if a.get("node_id") == "eval"), None)
+        if not rec or rec.get("input", {}).get("spec_ref") != func_id:
+            continue
+        sc = normalize_scorecard(rec.get("output", {}), "conformance")
+        return {"run_id": r["run_id"], "overall": sc.get("overall"), "summary": sc.get("summary"),
+                "criteria": sc.get("criteria", []), "missing": sc.get("missing", []),
+                "parsed": sc.get("parsed")}
+    return None
+
+
 def func_id_for_run(store: Store, run_id: str) -> str | None:
     """The FUNC a run targeted: its audit lineage's first FUNC, else a spec_ref/authored FUNC."""
     recs = store.audit_records(run_id)
@@ -677,8 +695,9 @@ class Handler(BaseHTTPRequestHandler):
                 fid = func_id_for_run(store, run_id)
                 lineage = next((a.get("lineage") for a in store.audit_records(run_id)
                                 if a.get("lineage")), [])
-                return self._send(200, {"available": True,
-                                        **task_model.traceability(repo, fid, lineage)})
+                res = task_model.traceability(repo, fid, lineage)
+                res["conformance"] = last_conformance(store, run.get("workspace_id") or ws_id, fid)
+                return self._send(200, {"available": True, **res})
             if path.startswith("/api/runs/") and path.endswith("/debug"):
                 # one-shot reproducibility bundle: run payload + live stream (incl. the exact
                 # command/prompt when MOIRA_DEBUG=1) + the slice of the sidecar log for this run.
