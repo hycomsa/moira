@@ -45,12 +45,19 @@ class AISdlcRepo:
         return sorted(p.name for p in d.glob("ADR-*.md"))
 
     # ---- reading ----------------------------------------------------------- #
+    # sidecar files in a func-spec folder that are NOT the spec itself
+    _NON_SPEC_MD = {"changelog.md", "test-plan.md"}
+
     def read_func_spec(self, func_id: str) -> Optional[str]:
-        """Read a func-spec folder (concatenate its markdown), or a single .md."""
+        """Read a func-spec folder (concatenate its markdown), or a single .md.
+
+        Excludes non-spec sidecars (changelog, test-plan) and puts `func-spec.md`
+        first, so the artifact title/headings come from the spec — not a changelog."""
         d = self.ctx / "func-specs" / func_id
         if d.is_dir():
-            parts = [p.read_text(encoding="utf-8")
-                     for p in sorted(d.glob("*.md"))]
+            files = [p for p in d.glob("*.md") if p.name not in self._NON_SPEC_MD]
+            files.sort(key=lambda p: (p.name != "func-spec.md", p.name))
+            parts = [p.read_text(encoding="utf-8") for p in files]
             return "\n\n".join(parts) if parts else None
         f = self.ctx / "func-specs" / f"{func_id}.md"
         return f.read_text(encoding="utf-8") if f.exists() else None
