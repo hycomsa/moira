@@ -36,6 +36,7 @@ from moira_core import (  # noqa: E402
 )
 from moira_core.gates import simulate_routing  # noqa: E402
 from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
+from moira_core import tasks as task_model  # noqa: E402
 
 DB = os.environ.get("MOIRA_DB", ".moira/moira.sqlite")
 REPO = None
@@ -404,8 +405,26 @@ def traceability(store: Store, ws_id: str) -> list[dict]:
         title = next((ln.lstrip("# ").strip() for ln in text.splitlines()
                       if ln.startswith("#")), fid)
         out.append({"id": fid, "title": title, "lineage": repo.trace_lineage(text, fid),
-                    "runs": runs_by_func.get(fid, [])})
+                    "runs": runs_by_func.get(fid, []),
+                    "completeness": task_model.completeness(repo, fid)})
     return out
+
+
+def func_id_for_run(store: Store, run_id: str) -> str | None:
+    """The FUNC a run targeted: its audit lineage's first FUNC, else a spec_ref/authored FUNC."""
+    recs = store.audit_records(run_id)
+    for a in recs:
+        for x in (a.get("lineage") or []):
+            if x.startswith("FUNC"):
+                return x
+    for a in recs:
+        sr = a.get("input", {}).get("spec_ref")
+        if sr and sr.startswith("FUNC"):
+            return sr
+        art = (a.get("output") or {}).get("artifact")
+        if isinstance(art, str) and art.startswith("FUNC"):
+            return art
+    return None
 
 
 def run_payload(store: Store, run_id: str) -> dict:
@@ -644,6 +663,22 @@ class Handler(BaseHTTPRequestHandler):
                 if not payload:
                     return self._send(404, {"error": "not found"})
                 return self._send(200, {"markdown": render_run_report(payload)})
+            if path.startswith("/api/runs/") and path.endswith("/traceability"):
+                # deterministic Spec ↔ Tests ↔ Tasks ↔ Lineage trace for the FUNC this run targeted
+                run_id = path[len("/api/runs/"):-len("/traceability")]
+                run = store.get_run(run_id)
+                if not run:
+                    return self._send(404, {"error": "not found"})
+                # resolve the repo from the RUN's workspace, not the query param
+                rp = ws_repo(store, run.get("workspace_id") or ws_id)
+                repo = AISdlcRepo(rp) if rp else None
+                if not (repo and repo.exists()):
+                    return self._send(200, {"func_id": None, "available": False})
+                fid = func_id_for_run(store, run_id)
+                lineage = next((a.get("lineage") for a in store.audit_records(run_id)
+                                if a.get("lineage")), [])
+                return self._send(200, {"available": True,
+                                        **task_model.traceability(repo, fid, lineage)})
             if path.startswith("/api/runs/") and path.endswith("/debug"):
                 # one-shot reproducibility bundle: run payload + live stream (incl. the exact
                 # command/prompt when MOIRA_DEBUG=1) + the slice of the sidecar log for this run.

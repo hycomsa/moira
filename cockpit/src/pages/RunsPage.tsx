@@ -8,7 +8,8 @@ import { Metrics } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
 import { OrbitGraph } from "../components/OrbitGraph";
 import { ScorecardView } from "../components/Scorecard";
-import type { EvalResult, Regulation, LiveState, LiveRecord } from "../api";
+import type { EvalResult, Regulation, LiveState, LiveRecord, Traceability } from "../api";
+import { getTraceMode } from "../api";
 
 const COLOR: Record<string, string> = {
   succeeded: "#3fb950", failed: "#f85149", waiting_gate: "#d29922",
@@ -32,6 +33,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [codePath, setCodePath] = useState<string | undefined>();
   const [chain, setChain] = useState<ChainStatus | null>(null);
+  const [trace, setTrace] = useState<Traceability | null>(null);
   const [evalRes, setEvalRes] = useState<EvalResult | null>(null);
   const [evalBusy, setEvalBusy] = useState(false);
   const [rerunBusy, setRerunBusy] = useState(false);
@@ -45,6 +47,11 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   useEffect(() => {
     if (!selected) { setChain(null); return; }
     api.verify(selected).then(setChain).catch(() => setChain(null));
+  }, [selected, detail]);
+
+  useEffect(() => {
+    if (!selected) { setTrace(null); return; }
+    api.runTraceability(selected).then(setTrace).catch(() => setTrace(null));
   }, [selected, detail]);
 
   useEffect(() => {
@@ -210,6 +217,21 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                     </span>
                   : <span className="chain-badge legacy" title="records written before hash-chaining">🛡 unsealed</span>
               )}
+              {trace?.available && getTraceMode() !== "llm" && (() => {
+                const c = trace.tasks;
+                const lvl = c?.level ?? "none";
+                const cls = lvl === "complete" ? "ok" : lvl === "partial" ? "warn" : "legacy";
+                const label = c && c.tasks.total > 0
+                  ? `🔗 ${c.tasks.done}/${c.tasks.total} tasks · ${c.ac.done}/${c.ac.total} AC`
+                  : "🔗 not decomposed";
+                const title = [
+                  trace.spec?.present ? "spec ✓" : "spec ✗",
+                  trace.tests?.present ? `tests ${trace.tests.ac_covered}/${trace.tests.ac_total} AC` : "no test plan",
+                  c ? `tasks ${c.tasks.done}/${c.tasks.total} done` : "no tasks",
+                  trace.lineage ? `lineage ${trace.lineage.resolved}/${trace.lineage.refs.length} resolved` : "",
+                ].filter(Boolean).join(" · ");
+                return <span className={"trace-badge " + cls} title={title}>{label}</span>;
+              })()}
               <span className="grow1" />
               <Button variant="ghost" size="sm" disabled={rerunBusy} onClick={rerun}
                 title="Re-run this pipeline as a fresh run (same inputs)">{rerunBusy ? "…" : "↻ Re-run"}</Button>
@@ -275,6 +297,33 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                       ))}
                     </ul>
                   )}
+                </section>
+              );
+            })()}
+            {trace?.available && trace.func_id && (() => {
+              const fid = trace.func_id;
+              const c = trace.tasks;
+              const acTotal = c?.ac.total || 0;
+              const Bar = ({ label, frac, val }: { label: string; frac: number; val: string }) => (
+                <div className="tr-row">
+                  <span className="tr-name">{label}</span>
+                  <span className="tr-bar"><span className="tr-fill" style={{ width: Math.round(Math.max(0, Math.min(1, frac)) * 100) + "%" }} /></span>
+                  <span className="tr-val">{val}</span>
+                </div>
+              );
+              return (
+                <section className="panel">
+                  <h3>Traceability <span className="muted" style={{ fontSize: 12, textTransform: "none" }}>· {fid} — spec ↔ tests ↔ tasks ↔ code</span></h3>
+                  <div className="tr-grid">
+                    <Bar label="Spec" frac={trace.spec?.present ? 1 : 0} val={trace.spec?.present ? "present" : "missing"} />
+                    <Bar label="Tests" frac={acTotal ? (trace.tests?.ac_covered || 0) / acTotal : 0} val={trace.tests?.present ? `${trace.tests.ac_covered}/${acTotal} AC` : "no test plan"} />
+                    <Bar label="Tasks" frac={c && c.tasks.total ? c.build_pct : 0} val={c && c.tasks.total ? `${c.tasks.done}/${c.tasks.total} done · ${c.ac.done}/${acTotal} AC` : (c?.has_epic ? "epic, no tasks" : "not decomposed")} />
+                    <Bar label="Lineage" frac={trace.lineage?.refs.length ? (trace.lineage.resolved / trace.lineage.refs.length) : (trace.lineage?.present ? 1 : 0)} val={trace.lineage?.refs.length ? `${trace.lineage.resolved}/${trace.lineage.refs.length} resolved` : "—"} />
+                  </div>
+                  <div className="tr-chips">
+                    {fid && <button className="chip chip-btn func" onClick={() => openArtifact(fid)}>📄 {fid}</button>}
+                    {(trace.lineage?.refs || []).map((id) => <button key={id} className="chip chip-btn" onClick={() => openArtifact(id)}>{id}</button>)}
+                  </div>
                 </section>
               );
             })()}

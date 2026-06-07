@@ -110,6 +110,12 @@ export function TraceabilityPage() {
                     <div className="trace-label">Func-spec</div>
                     <button className="chip chip-btn block-chip func" onClick={() => open(f.id)}>{f.id}</button>
                     <div className="trace-title">{f.title}</div>
+                    {f.completeness && (f.completeness.tasks.total > 0 || f.completeness.ac.total > 0) && (
+                      <div className="tr-mini" title={`${f.completeness.tasks.done}/${f.completeness.tasks.total} tasks done · ${f.completeness.ac.done}/${f.completeness.ac.total} AC implemented · ${f.completeness.ac.tested}/${f.completeness.ac.total} AC tested`}>
+                        <span className="tr-bar"><span className={"tr-fill lv-" + f.completeness.level} style={{ width: Math.round(f.completeness.build_pct * 100) + "%" }} /></span>
+                        <span className="muted small">{f.completeness.tasks.total > 0 ? `${Math.round(f.completeness.build_pct * 100)}% · ${f.completeness.ac.done}/${f.completeness.ac.total} AC` : "not decomposed"}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="trace-arrow">→</div>
                   <div className="trace-col">

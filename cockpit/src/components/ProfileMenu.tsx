@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, getUser, setUser, getWorkspace, type InboxItem, type Stats, type Workspace } from "../api";
+import { api, getUser, setUser, getWorkspace, getTraceMode, setTraceMode, type InboxItem, type Stats, type Workspace, type TraceMode } from "../api";
 import { Input } from "./ui/Input";
 import { Select } from "./ui/Select";
 import { Button } from "./ui/Button";
@@ -20,6 +20,7 @@ export function ProfileMenu({ inbox, theme, onTheme, onNavigate }: {
   const [health, setHealth] = useState<Health | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [wsp, setWsp] = useState<Workspace | null>(null);
+  const [traceMode, setTm] = useState<TraceMode>(getTraceMode());
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,6 +71,12 @@ export function ProfileMenu({ inbox, theme, onTheme, onNavigate }: {
             <label className="pp-field">Default model
               <Select value={u.model} onChange={(e) => patch({ model: e.target.value })} style={{ width: "100%" }}>
                 {MODELS.map((m) => <option key={m} value={m}>{m || "(backend default)"}</option>)}</Select></label>
+            <label className="pp-field">Traceability badge
+              <Select value={traceMode} onChange={(e) => { const m = e.target.value as TraceMode; setTm(m); setTraceMode(m); }} style={{ width: "100%" }}>
+                <option value="both">Both (structural + LLM)</option>
+                <option value="structural">Structural only (instant)</option>
+                <option value="llm">LLM conformance only</option>
+              </Select></label>
           </div>
 
           <div className="pp-sec pp-rows" onClick={() => go("inbox")} style={{ cursor: "pointer" }}>

@@ -927,6 +927,24 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .chain-badge.bad { color: #f85149; border-color: color-mix(in srgb,#f85149 50%,var(--border)); background: color-mix(in srgb,#f85149 10%,transparent); }
 .chain-badge.legacy { color: var(--muted); border-color: var(--border); }
 
+/* ---- traceability/completeness badge + panel ---- */
+.trace-badge { font-size: 11px; padding: 3px 9px; border-radius: 8px; border: 1px solid; white-space: nowrap; }
+.trace-badge.ok { color: #3fb950; border-color: color-mix(in srgb,#3fb950 40%,var(--border)); background: color-mix(in srgb,#3fb950 8%,transparent); }
+.trace-badge.warn { color: #d29922; border-color: color-mix(in srgb,#d29922 40%,var(--border)); background: color-mix(in srgb,#d29922 8%,transparent); }
+.trace-badge.legacy { color: var(--muted); border-color: var(--border); }
+.tr-grid { display: flex; flex-direction: column; gap: 6px; }
+.tr-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.tr-name { flex: 0 0 64px; color: var(--muted); }
+.tr-bar { flex: 1; height: 7px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; }
+.tr-fill { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.tr-fill.lv-complete { background: #3fb950; }
+.tr-fill.lv-partial { background: #d29922; }
+.tr-fill.lv-none { background: var(--muted); }
+.tr-val { flex: 0 0 auto; min-width: 96px; text-align: right; color: var(--text); }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tr-mini { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.tr-mini .tr-bar { max-width: 120px; }
+
 /* traceability graph */
 .trace-head-bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; }
 .trace-graph-page { display: flex; flex-direction: column; height: 100%; }

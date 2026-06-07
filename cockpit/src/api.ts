@@ -144,7 +144,20 @@ export interface ActivityRow {
 export interface SimBuckets { approve: number[]; escalate: number[]; reject: number[]; }
 export interface Workspace { id: string; name: string; repo_path: string; code_path: string | null; }
 export interface FuncSpec { id: string; title: string; lineage: string[]; }
-export interface TraceFunc { id: string; title: string; lineage: string[]; runs: RunMetrics[]; }
+export interface Completeness {
+  func_id: string; has_epic: boolean;
+  tasks: { total: number; done: number; by_status: Record<string, number> };
+  ac: { total: number; in_tasks: number; done: number; tested: number };
+  build_pct: number; level: "complete" | "partial" | "none";
+}
+export interface TraceFunc { id: string; title: string; lineage: string[]; runs: RunMetrics[]; completeness?: Completeness; }
+export interface Traceability {
+  available: boolean; func_id: string | null;
+  spec?: { present: boolean; title: string | null };
+  tests?: { present: boolean; ac_covered: number; ac_total: number };
+  tasks?: Completeness | null;
+  lineage?: { present: boolean; refs: string[]; resolved: number };
+}
 export interface ReportResult { markdown: string; committed: boolean; path: string | null; }
 export interface ChainStatus { ok: boolean; sealed: boolean; length: number; broken_at: number | null; head: string; }
 export interface Artifact { id: string; type: string; title: string; text: string; lineage?: string[]; }
@@ -226,6 +239,18 @@ export const api = {
     fetch(u(`/api/runs/${id}/live?from=${from}`)).then(j),
   debugBundle: (id: string): Promise<Record<string, unknown>> =>
     fetch(u(`/api/runs/${id}/debug`)).then(j),
+  runTraceability: (id: string): Promise<Traceability> =>
+    fetch(u(`/api/runs/${id}/traceability`)).then(j),
+};
+
+// Traceability badge mode (client-side, like the profile). "structural" is instant/deterministic;
+// "llm" reuses the conformance scorecard. Default: both.
+export type TraceMode = "structural" | "llm" | "both";
+export const getTraceMode = (): TraceMode => {
+  try { return (localStorage.getItem("moira-trace-mode") as TraceMode) || "both"; } catch { return "both"; }
+};
+export const setTraceMode = (m: TraceMode) => {
+  try { localStorage.setItem("moira-trace-mode", m); } catch { /* */ }
 };
 
 export interface LiveRecord { t: number; node: string; kind: string; text: string; tokens_in?: number; tokens_out?: number; }

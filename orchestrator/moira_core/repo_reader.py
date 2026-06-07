@@ -55,6 +55,11 @@ class AISdlcRepo:
         f = self.ctx / "func-specs" / f"{func_id}.md"
         return f.read_text(encoding="utf-8") if f.exists() else None
 
+    def read_test_plan(self, func_id: str) -> Optional[str]:
+        """Read a func-spec's test plan (qa@author-test-plan output), if present."""
+        f = self.ctx / "func-specs" / func_id / "test-plan.md"
+        return f.read_text(encoding="utf-8") if f.exists() else None
+
     def read_intent(self, intent_id: str) -> Optional[str]:
         f = self.ctx / "intent-specs" / intent_id / "intent.md"
         return f.read_text(encoding="utf-8") if f.exists() else None
