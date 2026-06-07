@@ -180,7 +180,16 @@ class ClaudeCodeBackend:
         # skill runs let the framework skill behave normally (it writes artifacts);
         # non-skill stage runs use the JSON output contract (+ an autonomy nudge for heavy roles).
         if not is_skill:
-            system = self.SYSTEM + ("\n\n" + self.AUTONOMY + "\n\n" + self.TASK_EXEC if heavy else "")
+            if heavy:
+                task_exec = self.TASK_EXEC
+                backlog_dir = context.get("backlog_dir")
+                if backlog_dir:  # backlog often lives in the BA repo, separate from the code cwd
+                    task_exec += (f"\nThe backlog for this workspace is at `{backlog_dir}` (a SEPARATE "
+                                  "repository from your code working directory — read and edit the task "
+                                  "files there, and commit the status change in that repo).")
+                system = self.SYSTEM + "\n\n" + self.AUTONOMY + "\n\n" + task_exec
+            else:
+                system = self.SYSTEM
             cmd += ["--append-system-prompt", system]
         # per-node model override (enables cross-model verification / strong-model planning)
         if node.model and node.model not in ("", "mock"):

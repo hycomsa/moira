@@ -813,10 +813,13 @@ class Handler(BaseHTTPRequestHandler):
                 owner = body.get("owner", "tomasz.skonieczny")
                 ws_id = body.get("workspace_id", "default")
                 pipe = load_pipeline(store, ws_id, body, func_id)
-                ctx = context_for(func_id, ws_repo(store, ws_id))
+                rp = ws_repo(store, ws_id)
+                ctx = context_for(func_id, rp)
                 code = ws_code_path(store, ws_id)  # real coding: agents write here (cwd)
                 if code:
                     ctx["cwd"] = code
+                if rp:  # where the git-native task backlog lives (may differ from the code cwd)
+                    ctx["backlog_dir"] = os.path.join(rp, task_model.project_config(Path(rp))["tickets_root"])
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
                 ctx["live_path"] = live_path_for(run_id)
                 log.info("launch run %s func=%s pipeline=%s backend=%s owner=%s",

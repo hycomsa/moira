@@ -109,6 +109,15 @@ class TestSuperpowersWiring(unittest.TestCase):
         cmd = self._cmd("requirements-analyst", env=None)
         self.assertNotIn("TASK TRACKING", cmd[cmd.index("--append-system-prompt") + 1])
 
+    def test_backlog_dir_injected_for_coding_role(self):
+        from moira_core.models import Node, NodeType
+        node = Node(id="impl", name="impl", type=NodeType.PRODUCER, backend="claude_code",
+                    role="superpowers-coder", spec_ref="FUNC-X")
+        cmd = B()._build_cmd(node, {"spec_text": "s", "backlog_dir": "/ba/backlog"})
+        sys_prompt = cmd[cmd.index("--append-system-prompt") + 1]
+        self.assertIn("/ba/backlog", sys_prompt)         # told where the (separate) backlog lives
+        self.assertIn("SEPARATE", sys_prompt)
+
 
 class TestBudgetTiers(unittest.TestCase):
     """skill / heavy / default budgets pick the right --max-turns."""

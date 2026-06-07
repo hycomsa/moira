@@ -43,6 +43,10 @@ const PRESETS: Preset[] = [
     desc: "Validate a func-spec's quality, then turn its acceptance criteria into a traceable test plan. Topic = FUNC-ID.",
     steps: [{ skill: "ba@validate-func-spec", persona: "architect" },
             { skill: "qa@author-test-plan", persona: "lead-dev" }] },
+  { id: "func-tasks-tests", name: "Func-spec → Tasks → Test plan",
+    desc: "Decompose a func-spec into a tracked backlog (epic + task files, Zdzira-compatible) and a traceable test plan — so Moira can measure completeness. Topic = FUNC-ID.",
+    steps: [{ skill: "pm@decompose-func", persona: "lead-dev" },
+            { skill: "qa@author-test-plan", persona: "lead-dev" }] },
 ];
 
 export function SkillsPage({ onOpenRun }: { onOpenRun?: (runId: string) => void } = {}) {
