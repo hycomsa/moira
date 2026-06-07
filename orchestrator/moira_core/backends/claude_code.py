@@ -61,6 +61,16 @@ class ClaudeCodeBackend:
                   "to disk with your tools. Do NOT stop to ask questions and do NOT merely propose; make "
                   "reasonable assumptions, note them, and proceed. End with a 1-2 line summary of the files "
                   "you created or changed.")
+    # appended for heavy/coding roles so any backend (dev@*, superpowers-coder) records task progress
+    # the git-native way Moira measures (see .ai/standards/pm/task-epic-conventions.md)
+    TASK_EXEC = ("=== TASK TRACKING (git-native) ===\n"
+                 "If the repository has a backlog epic for the func-spec you are implementing "
+                 "(`<tickets_root>/<func-slug>/` with `{KEY}-{N}.md` task files — see "
+                 ".ai/standards/pm/task-epic-conventions.md), treat its `todo` task files as your work "
+                 "list. When you finish the work a task describes, set that task file's `status:` to "
+                 "`done` (or `code_review` if it needs human sign-off), refresh `updated`, and lead the "
+                 "commit message with the task id, e.g. `PROJ-12: ...`. The task file is the source of "
+                 "truth for completeness — keep it current.")
 
     def __init__(self, binary: str = "claude", timeout: int | None = None,
                  permission_mode: str = "acceptEdits", max_turns: int | None = None,
@@ -170,7 +180,7 @@ class ClaudeCodeBackend:
         # skill runs let the framework skill behave normally (it writes artifacts);
         # non-skill stage runs use the JSON output contract (+ an autonomy nudge for heavy roles).
         if not is_skill:
-            system = self.SYSTEM + ("\n\n" + self.AUTONOMY if heavy else "")
+            system = self.SYSTEM + ("\n\n" + self.AUTONOMY + "\n\n" + self.TASK_EXEC if heavy else "")
             cmd += ["--append-system-prompt", system]
         # per-node model override (enables cross-model verification / strong-model planning)
         if node.model and node.model not in ("", "mock"):

@@ -97,6 +97,18 @@ class TestSuperpowersWiring(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--max-turns") + 1], str(B().max_turns))
         self.assertNotIn("autonomously", cmd[cmd.index("--append-system-prompt") + 1])
 
+    def test_heavy_role_gets_task_tracking_directive(self):
+        # any coding role (incl superpowers-coder) is told to flip task status + commit {TASK-ID}
+        for role in ("code-generator", "superpowers-coder"):
+            cmd = self._cmd(role, env=None)
+            sys_prompt = cmd[cmd.index("--append-system-prompt") + 1]
+            self.assertIn("TASK TRACKING", sys_prompt)
+            self.assertIn("status:", sys_prompt)
+
+    def test_light_role_no_task_tracking(self):
+        cmd = self._cmd("requirements-analyst", env=None)
+        self.assertNotIn("TASK TRACKING", cmd[cmd.index("--append-system-prompt") + 1])
+
 
 class TestBudgetTiers(unittest.TestCase):
     """skill / heavy / default budgets pick the right --max-turns."""
