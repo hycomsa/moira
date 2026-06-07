@@ -352,10 +352,10 @@ def spend_rollup(store: Store, ws_id: str) -> dict:
 
 def _summarize_check(rec: dict) -> str:
     o = rec.get("output") or {}
+    if isinstance(o.get("summary"), str) and o["summary"]:   # test_exec / ac_coverage carry a summary
+        return o["summary"]
     if isinstance(o.get("passed"), bool):
         return "check passed" if o["passed"] else "check FAILED"
-    if isinstance(o.get("summary"), str):
-        return o["summary"]
     return (rec.get("decisions") or [rec.get("status", "")])[0]
 
 

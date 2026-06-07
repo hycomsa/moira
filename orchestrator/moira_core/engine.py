@@ -253,7 +253,66 @@ class Engine:
         """AUTO_CHECK: built-in deterministic check (check_kind) or a shell command."""
         if node.check_kind == "ac_coverage":
             return self._run_ac_coverage_check(node, context)
+        if node.check_kind == "test_exec":
+            return self._run_test_exec_check(node, context)
         return self._run_shell_check(node, context)
+
+    @staticmethod
+    def _detect_test_cmd(cwd: str | None) -> str:
+        """Best-effort test runner for a code repo: npm test (node) / pytest (python)."""
+        import os
+        if not cwd:
+            return ""
+        pj = os.path.join(cwd, "package.json")
+        if os.path.exists(pj):
+            try:
+                import json as _j
+                if "test" in ((_j.load(open(pj, encoding="utf-8")).get("scripts")) or {}):
+                    return "npm test --silent"
+            except Exception:  # noqa: BLE001
+                pass
+        if any(os.path.exists(os.path.join(cwd, m)) for m in ("pytest.ini", "pyproject.toml", "setup.cfg")) \
+                or os.path.isdir(os.path.join(cwd, "tests")):
+            return "pytest -q"
+        return ""
+
+    @staticmethod
+    def _parse_test_counts(out: str) -> str:
+        """Pull a human summary from jest/pytest output, e.g. 'tests: 10 passed, 2 failed'."""
+        import re
+        m = re.search(r"Tests:\s*([0-9].*?)(?:\n|$)", out)              # jest: "Tests: 2 failed, 10 passed, 12 total"
+        if m:
+            return "tests: " + m.group(1).strip()
+        m = re.search(r"(\d+ passed(?:,\s*\d+ failed)?(?:,\s*\d+ skipped)?)", out)  # pytest
+        if m:
+            return "tests: " + m.group(1)
+        m = re.search(r"(\d+ failed)", out)
+        return "tests: " + m.group(1) if m else ""
+
+    def _run_test_exec_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
+        """Run the project's test suite in cwd → 'tests actually green' (vs a test-plan that merely
+        exists). Exit 0 = INFO (pass); non-zero = HIGH (fail, escalates the downstream gate)."""
+        cwd = context.get("cwd")
+        cmd = node.check_cmd or self._detect_test_cmd(cwd)
+        if not cmd:
+            f = Finding(id=node.id, confidence=1.0, severity=Severity.INFO,
+                        title="no test runner detected", detail=f"no npm test / pytest in {cwd or '.'}")
+            return BackendResult(output={"check": "test_exec", "passed": True, "summary": "no test runner", "cmd": None},
+                                 tools_used=["test_exec"], findings=[f], cost=Cost(), ok=True)
+        try:
+            proc = subprocess.run(shlex.split(cmd), cwd=cwd, capture_output=True, text=True, timeout=600)
+            ok = proc.returncode == 0
+            out = (proc.stdout or "") + (proc.stderr or "")
+            summary = self._parse_test_counts(out) or ("tests passed" if ok else "tests FAILED")
+            tail = out[-800:]
+        except Exception as e:  # noqa: BLE001
+            ok, summary, tail = False, f"test runner error: {e}", str(e)
+        sev = Severity.INFO if ok else Severity.HIGH
+        finding = Finding(id=node.id, confidence=1.0, severity=sev,
+                          title=("tests passed" if ok else "tests FAILED"), detail=f"{summary}\n{tail}")
+        return BackendResult(output={"check": "test_exec", "passed": ok, "summary": summary, "cmd": cmd},
+                             tools_used=[f"test_exec:{shlex.split(cmd)[0]}"],
+                             decisions=[f"ran `{cmd}` -> {summary}"], findings=[finding], cost=Cost(), ok=True)
 
     def _run_ac_coverage_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
         """Deterministic gate: every acceptance criterion of the FUNC must be covered by a task.

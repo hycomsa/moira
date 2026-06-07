@@ -329,7 +329,8 @@ class AISdlcRepo:
                 cmd = nd.get("check_cmd") or (nd.get("check") or {}).get("cmd", "")
                 nodes.append(Node(
                     id=nd["id"], name=nd.get("name", nd["id"]), type=NodeType.AUTO_CHECK,
-                    check_cmd=cmd, spec_ref=nd.get("spec_ref") or func_ref,
+                    check_cmd=cmd, check_kind=nd.get("check_kind", ""),
+                    spec_ref=nd.get("spec_ref") or func_ref,
                     depends_on=deps, max_retries=nd.get("max_retries", 0),
                 ))
             else:

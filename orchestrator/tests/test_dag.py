@@ -105,6 +105,47 @@ class TestAcCoverageCheck(unittest.TestCase):
         self.assertEqual(res.waiting_node, "cov")      # incomplete → escalate before the human gate
 
 
+class TestTestExecCheck(unittest.TestCase):
+    """AUTO_CHECK check_kind='test_exec' — run the project's test suite (green vs a mere test-plan)."""
+
+    def _check(self, cmd, cwd=None):
+        eng, _ = engine()
+        n = Node(id="t", name="t", type=NodeType.AUTO_CHECK, check_kind="test_exec", check_cmd=cmd)
+        return eng._run_test_exec_check(n, {"cwd": cwd})
+
+    def test_passing_parses_jest_summary(self):
+        res = self._check("python3 -c \"print('Tests: 12 passed, 12 total')\"")
+        self.assertTrue(res.output["passed"])
+        self.assertIn("12 passed", res.output["summary"])
+        self.assertFalse(res.has_blocking())            # INFO
+
+    def test_failing_blocks(self):
+        res = self._check('python3 -c "import sys; sys.exit(1)"')
+        self.assertFalse(res.output["passed"])
+        self.assertTrue(res.has_blocking())             # HIGH → downstream gate escalates
+
+    def test_parse_pytest_counts(self):
+        self.assertIn("10 passed", Engine._parse_test_counts("==== 10 passed, 2 skipped in 1.2s ===="))
+
+    def test_detect_npm(self):
+        import tempfile, os, json
+        d = tempfile.mkdtemp()
+        json.dump({"scripts": {"test": "jest"}}, open(os.path.join(d, "package.json"), "w"))
+        self.assertEqual(Engine._detect_test_cmd(d), "npm test --silent")
+
+    def test_detect_pytest(self):
+        import tempfile, os
+        d = tempfile.mkdtemp()
+        open(os.path.join(d, "pyproject.toml"), "w").close()
+        self.assertEqual(Engine._detect_test_cmd(d), "pytest -q")
+
+    def test_no_runner_passes_without_blocking(self):
+        import tempfile
+        res = self._check("", cwd=tempfile.mkdtemp())   # nothing to run / detect
+        self.assertTrue(res.output["passed"])
+        self.assertFalse(res.has_blocking())
+
+
 class TestParallel(unittest.TestCase):
     def test_independent_nodes_run_concurrently(self):
         be = SlowBackend()

@@ -139,8 +139,7 @@ PIPELINES = [
         # three checks run IN PARALLEL off implement:
         dict(id="verify-quality", agent="code-quality", depends_on=["implement"]),
         dict(id="verify-security", agent="security", depends_on=["implement"]),
-        dict(id="auto-tests", type="auto_check", depends_on=["implement"],
-             check_cmd="python3 -c \"print('tests pass')\""),
+        dict(id="auto-tests", type="auto_check", check_kind="test_exec", depends_on=["implement"]),
         # gate waits on all three (DAG join):
         dict(id="gate-impl", type="gate", depends_on=["verify-quality", "verify-security", "auto-tests"],
              gate=dict(mode="hybrid", persona="lead-dev",
@@ -173,8 +172,7 @@ PIPELINES = [
         dict(id="implement", agent="code-generator", depends_on=["design", "patterns"]),
         dict(id="review", agent="code-reviewer", depends_on=["implement"]),     # diff model (judge)
         dict(id="security", agent="security-auditor", depends_on=["implement"]),
-        dict(id="auto-tests", type="auto_check", depends_on=["implement"],
-             check_cmd="python3 -c \"print('tests pass')\""),
+        dict(id="auto-tests", type="auto_check", check_kind="test_exec", depends_on=["implement"]),
         dict(id="gate-impl", type="gate", depends_on=["review", "security", "auto-tests"],
              gate=dict(mode="hybrid", persona="lead-dev",
                        consumes=["review", "security", "auto-tests"],
