@@ -38,3 +38,6 @@ src-tauri/gen/
 /build/
 *.manifest
 src-tauri/binaries/moira-sidecar-*
+
+# local screenshot collection (not part of the product)
+screenshots/
