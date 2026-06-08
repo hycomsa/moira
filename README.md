@@ -17,15 +17,24 @@ Moira drives AI agents across the software development lifecycle (intent → req
 
 End-to-end on a real project (CSL Driver): shape specs via Discovery skills →
 guided/visual pipeline runs → human gates → tamper-evident git-native audit →
-report & traceability. **Built & verified (83 unit tests):**
+report & traceability. **Built & verified (137 unit tests):**
 - `orchestrator/` — dependency-free DAG engine + gates (auto/hybrid/human/off) +
   pluggable backends (mock/claude_code/litellm) + audit with **tamper-evident
   hash chain** + pluggable persistence (**SQLite / PostgreSQL / git mirror**) +
-  HTTP API. Drives AI SDLC **skills** for discovery (single + chained).
-- `cockpit/` — React + TS + Vite cockpit: Overview (mission control), Runs (+ run
-  metrics, report, context orbit), Inbox (pending-decision gates), a modern
-  pipeline editor, Discovery, Files, Traceability (list + graph + provenance
-  orbit), reusable UI primitives, profile menu. Plus a **mobile** gate inbox (`/m`).
+  HTTP API. Drives AI SDLC **skills** for discovery (single + chained). Deterministic
+  **AUTO_CHECK** gates: `ac_coverage` (every acceptance criterion has a task) and
+  `test_exec` (the project's test suite actually passes) — escalate on a gap.
+- **Git-native task/epic backlog** (Zdzira-compatible — one markdown per ticket):
+  `pm@decompose-func` turns a func-spec into an epic + tasks tagged by acceptance
+  criterion; Moira measures **completeness** (Spec ↔ Tests ↔ Tasks ↔ Code) deterministically
+  from the repo, alongside an optional **LLM conformance** scorecard. The same files
+  open in [Zdzira PM](https://github.com/hycomsa) — one format, four tools.
+- `cockpit/` — React + TS + Vite cockpit: Overview (mission control + **delivery-health
+  dashboard** — per-FUNC decomposed/tested/built/conformance), Runs (+ run metrics, report,
+  **traceability badge & panel**, context orbit), **decision-ready** Inbox (coverage +
+  conformance on every gate card), a modern pipeline editor, Discovery, Files, Traceability
+  (list + graph + provenance orbit), reusable UI primitives, profile menu. Plus a **mobile**
+  gate inbox (`/m`).
 - `src-tauri/` — Tauri v2 desktop shell (spawns the Python sidecar). Needs
   `cargo tauri` + webkit2gtk.
 
