@@ -13,6 +13,25 @@ interface Preset { id: string; name: string; desc: string; steps: Step[] }
 
 // Chained discovery pipelines (A3): ordered BA skills, each gated by a human.
 const PRESETS: Preset[] = [
+  // ── Author the upstream artifacts (Intent → Requirements → Func-spec), each with a quality gate ──
+  { id: "intent-shape", name: "Intent — shape & approve",
+    desc: "Create or refine a business Intent (INT-*) from a brief, notes or transcript — jobs-to-be-done, outcomes, constraints, evidence. PO approves. Topic = theme/area or a notes/transcript path.",
+    steps: [{ skill: "ba@shape-intent-spec", persona: "po" }] },
+  { id: "req-discover", name: "Requirements — discover/update & approve",
+    desc: "Discover and extract requirements (REQ-*) from notes/transcript/free-form — maps to existing, proposes updates, adds new. PO approves. Topic = notes path or an INT-ID.",
+    steps: [{ skill: "ba@discover-requirements", persona: "po" }] },
+  { id: "func-shape", name: "Func-spec — shape & approve",
+    desc: "Draft a functional spec (FUNC-*) from a requirement — TL;DR, use cases, acceptance criteria. PO approves. Topic = REQ-ID or a description.",
+    steps: [{ skill: "ba@shape-func-spec", persona: "po" }] },
+  { id: "func-update", name: "Func-spec — update & approve",
+    desc: "Apply described changes to an existing func-spec (auto-bumps changelog + version). PO approves. Topic = FUNC-ID + the changes to make.",
+    steps: [{ skill: "ba@update-func-spec", persona: "po" }] },
+  // ── Full upstream chain (gated at each step) ──
+  { id: "intent-req-func-gated", name: "Intent → Requirements → Func-spec (gated)",
+    desc: "End-to-end authoring of the upstream artifacts: shape the Intent → discover Requirements → shape the Func-spec, with a quality gate after each step (PO · PO · Architect). Topic = theme/area or notes path.",
+    steps: [{ skill: "ba@shape-intent-spec", persona: "po" },
+            { skill: "ba@discover-requirements", persona: "po" },
+            { skill: "ba@shape-func-spec", persona: "architect" }] },
   { id: "workshop-req-func", name: "Workshop → Requirements → Func-spec",
     desc: "From raw workshop notes/transcript to discovered requirements, then a func-spec for the first new REQ. Topic = path to the notes (e.g. .ai/context/_input/…).",
     steps: [{ skill: "ba@discover-requirements", persona: "po" },
