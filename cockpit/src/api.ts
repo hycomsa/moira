@@ -74,10 +74,22 @@ export interface InboxItem {
 // Under the Tauri shell the frontend is served from the embedded asset protocol,
 // so relative /api would not reach the Python sidecar — use an absolute base.
 // In the browser (vite dev or python-served) same-origin "" works (CORS is open).
-const isTauri =
+export const isTauri =
   typeof window !== "undefined" &&
   ("__TAURI_INTERNALS__" in window || window.location.hostname === "tauri.localhost");
 const BASE = isTauri ? "http://127.0.0.1:8765" : "";
+
+// Native folder picker (desktop only): drives tauri-plugin-dialog via the injected IPC
+// internals — no npm dep / no withGlobalTauri needed. Returns the chosen path, or null
+// (cancelled / web mode / unavailable). In web mode the caller keeps the manual-paste field.
+export async function pickFolder(title = "Select folder"): Promise<string | null> {
+  const internals = (typeof window !== "undefined" ? (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (c: string, a: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__ : undefined);
+  if (!internals?.invoke) return null;
+  try {
+    const res = await internals.invoke("plugin:dialog|open", { options: { directory: true, multiple: false, title } });
+    return typeof res === "string" ? res : null;
+  } catch { return null; }
+}
 const u = (p: string) => `${BASE}${p}`;
 
 // active workspace (multi-workspace scoping)

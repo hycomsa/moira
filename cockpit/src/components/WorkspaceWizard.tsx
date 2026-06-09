@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { Modal } from "./Modal";
-import { api } from "../api";
+import { api, isTauri, pickFolder } from "../api";
 import { Button } from "./ui/Button";
 
 export function WorkspaceWizard({ onClose, onCreated }: {
   onClose: () => void; onCreated: (id: string) => void;
 }) {
+  const browse = (title: string, set: (v: string) => void) => async () => {
+    const p = await pickFolder(title);
+    if (p) set(p);
+  };
   const [mode, setMode] = useState<"existing" | "clone">("existing");
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
@@ -60,12 +64,18 @@ export function WorkspaceWizard({ onClose, onCreated }: {
         <>
           <div className="field-lg">
             <label>AI SDLC repo path</label>
-            <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/path/to/your/ai-sdlc-repo" />
+            <div className="path-row">
+              <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/path/to/your/ai-sdlc-repo" />
+              {isTauri && <Button variant="ghost" onClick={browse("Select the AI SDLC repo folder", setRepo)}>📁 Browse…</Button>}
+            </div>
             <div className="hint">Folder containing <code>.ai/context</code> (intents, specs, agents, pipelines).</div>
           </div>
           <div className="field-lg">
             <label>Software repo path <span className="muted">(optional)</span></label>
-            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="where agents write code" />
+            <div className="path-row">
+              <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="where agents write code" />
+              {isTauri && <Button variant="ghost" onClick={browse("Select the software repo folder", setCode)}>📁 Browse…</Button>}
+            </div>
             <div className="hint">Leave empty for analysis-only / mock runs.</div>
           </div>
         </>
@@ -77,7 +87,10 @@ export function WorkspaceWizard({ onClose, onCreated }: {
           </div>
           <div className="field-lg">
             <label>Destination folder</label>
-            <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="/path/to/clone/into" />
+            <div className="path-row">
+              <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="/path/to/clone/into" />
+              {isTauri && <Button variant="ghost" onClick={browse("Select the destination folder", setDest)}>📁 Browse…</Button>}
+            </div>
             <div className="hint">The repo is cloned here, then registered as this workspace.</div>
           </div>
         </>

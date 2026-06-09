@@ -963,6 +963,11 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .dh-cell i { font-style: normal; color: var(--muted); font-size: 11px; min-width: 34px; text-align: right; }
 .dh-llm { text-align: right; }
 
+/* path field + native folder picker (desktop) */
+.path-row { display: flex; gap: 8px; align-items: stretch; }
+.path-row input { flex: 1; min-width: 0; }
+.path-row .ui-btn { white-space: nowrap; flex: 0 0 auto; }
+
 /* traceability graph */
 .trace-head-bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; }
 .trace-graph-page { display: flex; flex-direction: column; height: 100%; }
