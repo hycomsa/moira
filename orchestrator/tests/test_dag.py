@@ -146,6 +146,25 @@ class TestTestExecCheck(unittest.TestCase):
         self.assertFalse(res.has_blocking())
 
 
+class TestSkillPipelineNode(unittest.TestCase):
+    """build_pipeline supports `skill:` nodes → authoring pipelines (Discovery as a pipeline)."""
+
+    def test_skill_node_builds_authoring_producer(self):
+        from moira_core.repo_reader import AISdlcRepo
+        repo = AISdlcRepo("/tmp/does-not-exist")
+        pdef = {"id": "p", "name": "p", "nodes": [
+            {"id": "intent", "skill": "ba@shape-intent-spec"},
+            {"id": "g", "type": "gate", "depends_on": ["intent"], "gate": {"mode": "human", "persona": "po"}},
+        ]}
+        pipe = repo.build_pipeline(pdef, func_ref="INT-X")
+        n = pipe.nodes[0]
+        self.assertEqual(n.skill, "ba@shape-intent-spec")
+        self.assertEqual(n.role, "ba-skill")
+        self.assertEqual(n.backend, "claude_code")
+        self.assertEqual(n.type, NodeType.PRODUCER)
+        self.assertEqual(pipe.nodes[1].type, NodeType.GATE)
+
+
 class TestParallel(unittest.TestCase):
     def test_independent_nodes_run_concurrently(self):
         be = SlowBackend()

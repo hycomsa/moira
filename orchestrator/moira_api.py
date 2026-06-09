@@ -880,7 +880,13 @@ class Handler(BaseHTTPRequestHandler):
                 rp = ws_repo(store, ws_id)
                 ctx = context_for(func_id, rp)
                 code = ws_code_path(store, ws_id)  # real coding: agents write here (cwd)
-                if code:
+                authoring = any(getattr(n, "skill", "") for n in pipe.nodes)
+                if authoring and rp:
+                    ctx["cwd"] = rp        # authoring pipeline: write specs INTO the AI SDLC repo
+                    first = next((n for n in pipe.nodes if getattr(n, "skill", "")), None)
+                    if first and not first.skill_input:
+                        first.skill_input = func_id   # seed the chain with the run's topic
+                elif code:
                     ctx["cwd"] = code
                 if rp:  # where the git-native task backlog lives (may differ from the code cwd)
                     ctx["backlog_dir"] = os.path.join(rp, task_model.project_config(Path(rp))["tickets_root"])

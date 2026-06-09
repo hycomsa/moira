@@ -333,6 +333,16 @@ class AISdlcRepo:
                     spec_ref=nd.get("spec_ref") or func_ref,
                     depends_on=deps, max_retries=nd.get("max_retries", 0),
                 ))
+            elif nd.get("skill"):
+                # authoring node: drive an AI SDLC framework skill (ba@*/pm@*/qa@*) headless,
+                # same as Discovery — writes artifacts into the AI SDLC repo (run cwd = repo).
+                nodes.append(Node(
+                    id=nd["id"], name=nd.get("name", nd["skill"]), type=NodeType.PRODUCER,
+                    backend="claude_code", role="ba-skill", skill=nd["skill"],
+                    skill_input=nd.get("input", ""), prompt_extra=nd.get("elaboration", ""),
+                    spec_ref=nd.get("spec_ref") or func_ref,
+                    depends_on=deps, max_retries=nd.get("max_retries", 1),
+                ))
             else:
                 agent = self.get_agent(nd["agent"]) if nd.get("agent") else None
                 role = (agent or {}).get("role", nd.get("agent", nd["id"]))
