@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { Modal } from "./Modal";
-import { api, isTauri, pickFolder } from "../api";
+import { api, isTauri, nativePickFolder } from "../api";
 import { Button } from "./ui/Button";
+import { FolderBrowser } from "./FolderBrowser";
 
 export function WorkspaceWizard({ onClose, onCreated }: {
   onClose: () => void; onCreated: (id: string) => void;
 }) {
-  const browse = (title: string, set: (v: string) => void) => async () => {
-    const p = await pickFolder(title);
-    if (p) set(p);
+  const [picker, setPicker] = useState<{ title: string; start: string; set: (v: string) => void } | null>(null);
+  const browse = (title: string, start: string, set: (v: string) => void) => async () => {
+    if (isTauri) {
+      try { const p = await nativePickFolder(title); if (p) set(p); return; }  // native OS dialog
+      catch { /* remote IPC unavailable → fall through to the in-app browser */ }
+    }
+    setPicker({ title, start, set });   // web mode + desktop fallback
   };
   const [mode, setMode] = useState<"existing" | "clone">("existing");
   const [name, setName] = useState("");
@@ -34,6 +39,7 @@ export function WorkspaceWizard({ onClose, onCreated }: {
   };
 
   return (
+   <>
     <Modal eyebrow="New workspace" title="Connect a project" onClose={onClose}
       footer={<>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -66,7 +72,7 @@ export function WorkspaceWizard({ onClose, onCreated }: {
             <label>AI SDLC repo path</label>
             <div className="path-row">
               <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/path/to/your/ai-sdlc-repo" />
-              {isTauri && <Button variant="ghost" onClick={browse("Select the AI SDLC repo folder", setRepo)}>📁 Browse…</Button>}
+              <Button variant="ghost" onClick={browse("Select the AI SDLC repo folder", repo, setRepo)}>📁 Browse…</Button>
             </div>
             <div className="hint">Folder containing <code>.ai/context</code> (intents, specs, agents, pipelines).</div>
           </div>
@@ -74,7 +80,7 @@ export function WorkspaceWizard({ onClose, onCreated }: {
             <label>Software repo path <span className="muted">(optional)</span></label>
             <div className="path-row">
               <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="where agents write code" />
-              {isTauri && <Button variant="ghost" onClick={browse("Select the software repo folder", setCode)}>📁 Browse…</Button>}
+              <Button variant="ghost" onClick={browse("Select the software repo folder", code, setCode)}>📁 Browse…</Button>
             </div>
             <div className="hint">Leave empty for analysis-only / mock runs.</div>
           </div>
@@ -89,7 +95,7 @@ export function WorkspaceWizard({ onClose, onCreated }: {
             <label>Destination folder</label>
             <div className="path-row">
               <input value={dest} onChange={(e) => setDest(e.target.value)} placeholder="/path/to/clone/into" />
-              {isTauri && <Button variant="ghost" onClick={browse("Select the destination folder", setDest)}>📁 Browse…</Button>}
+              <Button variant="ghost" onClick={browse("Select the destination folder", dest, setDest)}>📁 Browse…</Button>
             </div>
             <div className="hint">The repo is cloned here, then registered as this workspace.</div>
           </div>
@@ -98,5 +104,8 @@ export function WorkspaceWizard({ onClose, onCreated }: {
 
       {err && <div style={{ color: "#f85149", fontSize: 12, marginTop: 6 }}>{err}</div>}
     </Modal>
+    {picker && <FolderBrowser title={picker.title} start={picker.start}
+      onPick={(p) => picker.set(p)} onClose={() => setPicker(null)} />}
+   </>
   );
 }

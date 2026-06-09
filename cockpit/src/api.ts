@@ -79,17 +79,18 @@ export const isTauri =
   ("__TAURI_INTERNALS__" in window || window.location.hostname === "tauri.localhost");
 const BASE = isTauri ? "http://127.0.0.1:8765" : "";
 
-// Native folder picker (desktop only): drives tauri-plugin-dialog via the injected IPC
-// internals — no npm dep / no withGlobalTauri needed. Returns the chosen path, or null
-// (cancelled / web mode / unavailable). In web mode the caller keeps the manual-paste field.
-export async function pickFolder(title = "Select folder"): Promise<string | null> {
+// Native OS folder dialog (desktop only): invokes our Rust `pick_folder` command. The cockpit
+// loads a remote origin, so this only works when remote IPC is enabled in the Tauri build;
+// THROWS when unavailable so the caller falls back to the in-app browser (web + desktop fallback).
+export async function nativePickFolder(title = "Select folder"): Promise<string | null> {
   const internals = (typeof window !== "undefined" ? (window as unknown as { __TAURI_INTERNALS__?: { invoke?: (c: string, a: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__ : undefined);
-  if (!internals?.invoke) return null;
-  try {
-    const res = await internals.invoke("plugin:dialog|open", { options: { directory: true, multiple: false, title } });
-    return typeof res === "string" ? res : null;
-  } catch { return null; }
+  if (!internals?.invoke) throw new Error("native IPC unavailable");
+  const res = await internals.invoke("pick_folder", { title });
+  return typeof res === "string" && res ? res : null;
 }
+
+export interface DirEntry { name: string; path: string; is_repo: boolean; }
+export interface DirListing { path: string; parent: string | null; dirs: DirEntry[]; is_repo: boolean; }
 const u = (p: string) => `${BASE}${p}`;
 
 // active workspace (multi-workspace scoping)
@@ -259,6 +260,8 @@ export const api = {
     fetch(u(`/api/runs/${id}/debug`)).then(j),
   runTraceability: (id: string): Promise<Traceability> =>
     fetch(u(`/api/runs/${id}/traceability`)).then(j),
+  browse: (path = ""): Promise<DirListing> =>
+    fetch(u(`/api/browse?path=${encodeURIComponent(path)}`)).then(j),
 };
 
 // Traceability badge mode (client-side, like the profile). "structural" is instant/deterministic;

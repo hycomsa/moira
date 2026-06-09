@@ -21,6 +21,23 @@ const SIDECAR_ADDR: &str = "127.0.0.1:8765";
 
 struct Sidecar(Mutex<Option<Child>>);
 
+// Native OS folder picker, invoked from the cockpit (which loads the remote sidecar origin —
+// IPC for it is enabled via the `remote` field in capabilities/default.json). Returns the chosen
+// absolute path, or null if the user cancels. The JS side falls back to an in-app browser if this
+// is unavailable (e.g. web mode).
+#[tauri::command]
+fn pick_folder(app: tauri::AppHandle, title: Option<String>) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut builder = app.dialog().file();
+    if let Some(t) = title.filter(|t| !t.is_empty()) {
+        builder = builder.set_title(t);
+    }
+    builder
+        .blocking_pick_folder()
+        .and_then(|fp| fp.into_path().ok())
+        .map(|pb| pb.to_string_lossy().into_owned())
+}
+
 fn spawn_sidecar(app: &tauri::AppHandle) -> Option<Child> {
     let mut cmd = if cfg!(debug_assertions) {
         // dev: the Python source sidecar serving the freshly built cockpit dist
@@ -135,6 +152,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![pick_folder])
         .manage(Sidecar(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();

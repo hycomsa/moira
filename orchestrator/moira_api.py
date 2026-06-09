@@ -568,6 +568,29 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
                 return self._send(200, {"path": LOG_PATH, "log": text})
+            if path == "/api/browse":
+                # localhost-only directory listing for the in-app folder picker (web mode +
+                # desktop fallback). Lists subdirectories only; no file contents.
+                q = parse_qs(parsed.query).get("path", [""])[0]
+                base = os.path.abspath(os.path.expanduser(q)) if q else os.path.expanduser("~")
+                if not os.path.isdir(base):
+                    base = os.path.expanduser("~")
+                dirs = []
+                try:
+                    for e in os.scandir(base):
+                        if e.name.startswith(".") or not e.is_dir(follow_symlinks=False):
+                            continue
+                        dirs.append({"name": e.name, "path": os.path.join(base, e.name)})
+                except OSError:
+                    pass
+                dirs.sort(key=lambda d: d["name"].lower())
+                parent = os.path.dirname(base.rstrip(os.sep)) or base
+                # mark folders that look like an AI SDLC repo (have .ai/context) to guide the pick
+                for d in dirs:
+                    d["is_repo"] = os.path.isdir(os.path.join(d["path"], ".ai", "context"))
+                return self._send(200, {"path": base, "parent": parent if parent != base else None,
+                                        "dirs": dirs,
+                                        "is_repo": os.path.isdir(os.path.join(base, ".ai", "context"))})
             if path == "/api/workspaces":
                 return self._send(200, {"workspaces": store.list_workspaces()})
             if path == "/api/runs":

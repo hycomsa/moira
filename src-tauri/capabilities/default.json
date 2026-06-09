@@ -3,6 +3,7 @@
   "identifier": "default",
   "description": "Default capability set for the Moira cockpit window.",
   "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:8765"] },
   "permissions": [
     "core:default",
     "shell:allow-spawn",
