@@ -1046,6 +1046,12 @@ class Handler(BaseHTTPRequestHandler):
                 run = store.get_run(run_id)
                 if not run:
                     return self._send(404, {"error": "not found"})
+                if run.get("status") != "waiting_gate":
+                    # Idempotent against double-clicks / duplicate requests: only a run actually
+                    # parked at a gate can be decided. A late duplicate must NOT spawn a second
+                    # resume thread — that crashed and failed an already-running run.
+                    return self._send(409, {"error": "run is not waiting at a gate",
+                                            "run_id": run_id, "status": run.get("status")})
                 pipe = Pipeline.from_dict(json.loads(run["pipeline"]))
                 if path.endswith("/approve"):
                     dec = GateDecision(decision="approve", by=body.get("by", "human"),

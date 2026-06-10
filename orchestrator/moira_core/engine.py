@@ -89,7 +89,15 @@ class Engine:
         state = self.store.get_run_state(run_id) or {n.id: PENDING for n in pipeline.nodes}
         waiting = next((nid for nid, s in state.items() if s == WAITING), None)
         if waiting is None:
-            raise RuntimeError("run is not waiting at a gate")
+            # Idempotent: a duplicate/late decision (e.g. a double-clicked Approve) arriving
+            # after the gate was already decided must be a no-op — never a crash, which would
+            # mark an already-running run as failed. Reflect the run's current status instead.
+            self._event(run_id, "gate.decision",
+                        f"ignored duplicate {decision.decision}: run no longer waiting at a gate")
+            try:
+                return RunResult(run_id, Status(run.get("status") or RUNNING))
+            except ValueError:
+                return RunResult(run_id, Status.RUNNING)
         node = pipeline.by_id(waiting)
         self._event(run_id, "gate.decision",
                     f"[{node.name}] {decision.decision} by {decision.by}: {decision.confirmed}", node.id)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, getWorkspace, approver, type Artifact, type AuditRow, type InboxItem, type RunDetail } from "../api";
 import { FilesDiff, hasDiff } from "../components/FilesDiff";
 import { Metrics } from "../components/Metrics";
@@ -29,6 +29,7 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const inFlight = useRef(false);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
 
   useEffect(() => { api.run(it.run_id).then(setDet).catch(() => setDet(null)); }, [it.run_id]);
@@ -57,6 +58,8 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
   }, [det, audit]);
 
   const decide = async (kind: "approve" | "reject") => {
+    if (inFlight.current) return;   // synchronous guard: a gate can only be decided once
+    inFlight.current = true;
     setBusy(true); setMsg("");
     try {
       if (kind === "approve") await api.approve(it.run_id, approver(), note || "Reviewed and accepted");
@@ -67,6 +70,7 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
       setMsg("⚠ Action failed: " + String((e as Error)?.message || e));
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   };
 
