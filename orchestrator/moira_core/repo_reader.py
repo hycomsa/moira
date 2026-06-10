@@ -342,6 +342,7 @@ class AISdlcRepo:
                     skill_input=nd.get("input", ""), prompt_extra=nd.get("elaboration", ""),
                     spec_ref=nd.get("spec_ref") or func_ref,
                     depends_on=deps, max_retries=nd.get("max_retries", 1),
+                    timeout=nd.get("timeout"), max_turns=nd.get("max_turns"),
                 ))
             else:
                 agent = self.get_agent(nd["agent"]) if nd.get("agent") else None
@@ -355,6 +356,7 @@ class AISdlcRepo:
                     model=nd.get("model") or (agent or {}).get("model", ""),
                     spec_ref=nd.get("spec_ref") or func_ref,
                     max_retries=nd.get("max_retries", 2), depends_on=deps,
+                    timeout=nd.get("timeout"), max_turns=nd.get("max_turns"),
                 ))
         return Pipeline(id=pdef["id"], name=pdef.get("name", pdef["id"]), nodes=nodes)
 

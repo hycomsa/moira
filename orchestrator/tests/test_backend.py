@@ -138,6 +138,10 @@ class TestBudgetTiers(unittest.TestCase):
     def test_default_role_uses_default_budget(self):
         self.assertEqual(self._turns(role="requirements-analyst"), "12")
 
+    def test_per_node_override_wins(self):
+        # a node may request a bigger budget (e.g. an area-wide fix of ~10 specs)
+        self.assertEqual(self._turns(role="ba-skill", skill="ba@fix-func-spec-style", max_turns=80), "80")
+
     def test_env_defaults(self):
         import os
         os.environ["MOIRA_CLAUDE_SKILL_TIMEOUT"] = "111"

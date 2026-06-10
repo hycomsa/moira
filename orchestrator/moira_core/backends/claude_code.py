@@ -164,9 +164,9 @@ class ClaudeCodeBackend:
         role = node.role or node.id
         is_skill = bool(node.skill)
         heavy = role in self.HEAVY_ROLES
-        max_turns = (self.skill_max_turns if is_skill
-                     else self.heavy_max_turns if heavy
-                     else self.max_turns)
+        max_turns = node.max_turns or (self.skill_max_turns if is_skill
+                                       else self.heavy_max_turns if heavy
+                                       else self.max_turns)
         cmd = [
             self.binary, "-p", self._build_prompt(node, context),
             # realtime NDJSON so we can stream reasoning/tools/tokens live (stream-json
@@ -261,9 +261,9 @@ class ClaudeCodeBackend:
         cmd = self._build_cmd(node, context)
         role = node.role or node.id
         # fail fast on skills (headless ba@* can hang); big budget for coding; default otherwise
-        timeout = (self.skill_timeout if node.skill
-                   else self.heavy_timeout if role in self.HEAVY_ROLES
-                   else self.timeout)
+        timeout = node.timeout or (self.skill_timeout if node.skill
+                                   else self.heavy_timeout if role in self.HEAVY_ROLES
+                                   else self.timeout)
         live_path = context.get("live_path")
         node_id = node.id
         debug = os.environ.get("MOIRA_DEBUG") not in (None, "", "0", "false", "False")

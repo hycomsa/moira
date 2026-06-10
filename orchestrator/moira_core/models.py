@@ -160,6 +160,8 @@ class Node:
     depends_on: list[str] = field(default_factory=list)  # DAG predecessors (empty -> linear by order)
     check_cmd: str = ""                    # AUTO_CHECK: shell command to run in cwd
     check_kind: str = ""                   # AUTO_CHECK: built-in check (e.g. "ac_coverage"); "" -> shell
+    timeout: Optional[int] = None          # per-node budget override (seconds); None -> tier default
+    max_turns: Optional[int] = None        # per-node turn budget override; None -> tier default
     # Discovery/BA: drive an AI SDLC framework skill (e.g. ba@shape-func-spec) to
     # author/refine an artifact in the repo, optionally specialized by prompt_extra.
     skill: str = ""                        # skill id, e.g. "ba@shape-func-spec"
@@ -174,6 +176,7 @@ class Node:
             "gate": self.gate.to_dict() if self.gate else None,
             "on_reject_goto": self.on_reject_goto, "max_retries": self.max_retries,
             "depends_on": self.depends_on, "check_cmd": self.check_cmd, "check_kind": self.check_kind,
+            "timeout": self.timeout, "max_turns": self.max_turns,
             "skill": self.skill, "skill_input": self.skill_input, "prompt_extra": self.prompt_extra,
         }
 
@@ -187,6 +190,7 @@ class Node:
             on_reject_goto=d.get("on_reject_goto"), max_retries=d.get("max_retries", 2),
             depends_on=d.get("depends_on") or [], check_cmd=d.get("check_cmd", ""),
             check_kind=d.get("check_kind", ""),
+            timeout=d.get("timeout"), max_turns=d.get("max_turns"),
             skill=d.get("skill", ""), skill_input=d.get("skill_input", ""),
             prompt_extra=d.get("prompt_extra", ""),
         )
