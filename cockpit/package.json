@@ -4,7 +4,11 @@
   "private": true,
   "license": "Apache-2.0",
   "description": "Moira cockpit — React/TS frontend for the AI-native SDLC cockpit",
-  "repository": { "type": "git", "url": "git+https://github.com/hycomsa/moira.git", "directory": "cockpit" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hycomsa/moira.git",
+    "directory": "cockpit"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +17,7 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.11.0",
+    "marked": "^18.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

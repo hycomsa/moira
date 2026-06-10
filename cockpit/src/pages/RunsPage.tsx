@@ -8,6 +8,7 @@ import { Metrics } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
 import { OrbitGraph } from "../components/OrbitGraph";
 import { ScorecardView } from "../components/Scorecard";
+import { Markdown } from "../components/Markdown";
 import type { EvalResult, Regulation, LiveState, LiveRecord, Traceability } from "../api";
 import { getTraceMode } from "../api";
 
@@ -30,6 +31,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [wizard, setWizard] = useState(false);
   const [report, setReport] = useState<ReportResult | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
+  const [reportTab, setReportTab] = useState<"preview" | "raw">("preview");
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [codePath, setCodePath] = useState<string | undefined>();
   const [chain, setChain] = useState<ChainStatus | null>(null);
@@ -456,7 +458,13 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
             <Button variant="ghost" onClick={downloadReport}>⤓ Download .md</Button>
             <Button variant="primary" onClick={() => setReport(null)}>Done</Button>
           </>}>
-          <pre className="artifact-text">{report.markdown}</pre>
+          <div className="seg" style={{ width: 220, marginBottom: 12 }}>
+            <button className={"seg-btn" + (reportTab === "preview" ? " on" : "")} onClick={() => setReportTab("preview")}>Preview</button>
+            <button className={"seg-btn" + (reportTab === "raw" ? " on" : "")} onClick={() => setReportTab("raw")}>Markdown</button>
+          </div>
+          {reportTab === "preview"
+            ? <Markdown md={report.markdown} />
+            : <pre className="artifact-text">{report.markdown}</pre>}
         </Modal>
       )}
       {artifact && <ArtifactModal artifact={artifact} onClose={() => setArtifact(null)} onOpen={openArtifact} />}

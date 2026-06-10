@@ -988,6 +988,25 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .dc-escal .check-row .kind { font-family: var(--font-mono); font-size: 11px; color: var(--muted); flex: 0 0 auto; }
 .dc-escal .check-row .csum { color: var(--text); word-break: break-word; }
 
+/* rendered markdown (run reports, artifacts) */
+.md-body { color: var(--text); font-size: 13.5px; line-height: 1.6; max-height: 62vh; overflow: auto; padding-right: 6px; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { color: var(--text); line-height: 1.25; margin: 18px 0 8px; }
+.md-body h1 { font-size: 22px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.md-body h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md-body h3 { font-size: 15px; } .md-body h4 { font-size: 13.5px; color: var(--muted); }
+.md-body p { margin: 8px 0; } .md-body ul, .md-body ol { margin: 8px 0; padding-left: 22px; }
+.md-body li { margin: 3px 0; }
+.md-body a { color: var(--accent); }
+.md-body code { font-family: var(--font-mono); font-size: 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.md-body pre { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; }
+.md-body pre code { background: none; border: 0; padding: 0; }
+.md-body blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--muted); }
+.md-body hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+.md-body table { border-collapse: collapse; margin: 10px 0; font-size: 12.5px; width: 100%; }
+.md-body th, .md-body td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; }
+.md-body th { background: var(--panel2); color: var(--text); font-weight: 600; }
+.md-body tr:nth-child(even) td { background: color-mix(in srgb, var(--panel2) 45%, transparent); }
+
 /* traceability graph */
 .trace-head-bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; }
 .trace-graph-page { display: flex; flex-direction: column; height: 100%; }
