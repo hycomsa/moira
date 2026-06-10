@@ -22,8 +22,8 @@ function summarize(r?: AuditRow): string {
   return r.status;
 }
 
-function DecisionCard({ it, codePath, onDecided }: {
-  it: InboxItem; codePath?: string; onDecided: () => void;
+function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
+  it: InboxItem; codePath?: string; onDecided: () => void; onOpenRun?: (id: string) => void;
 }) {
   const [det, setDet] = useState<RunDetail | null | undefined>(undefined);
   const [note, setNote] = useState("");
@@ -41,6 +41,10 @@ function DecisionCard({ it, codePath, onDecided }: {
   const authored = [...new Set(produced.map((p) => (p.output as Record<string, unknown>).artifact as string).filter(Boolean))];
   const fileCount = produced.reduce((n, p) => n + ((out(p).files as unknown[])?.length || 0), 0);
   const isClient = it.audience === "client";
+  // a node that FAILED after retries escalates here with no artifact — surface why
+  const events = det?.events ?? [];
+  const escalated = events.some((e) => e.kind === "node.escalate");
+  const failEvents = events.filter((e) => e.kind === "node.escalate" || e.kind === "retry");
 
   const metrics = useMemo(() => {
     if (!det) return null;
@@ -85,6 +89,7 @@ function DecisionCard({ it, codePath, onDecided }: {
           <div className="dc-sub">{det?.pipeline.name || it.run_id.replace("run-", "")} · <code>{it.run_id.replace("run-", "").slice(0, 10)}</code></div>
         </div>
         {metrics && <Metrics m={metrics} compact />}
+        {onOpenRun && <button className="link dc-open" onClick={() => onOpenRun(it.run_id)} title="open the full run (execution plan + activity)">Open run →</button>}
       </div>
 
       {/* verdict banner */}
@@ -146,6 +151,20 @@ function DecisionCard({ it, codePath, onDecided }: {
           ))}
         </details>
       )}
+      {/* failed-node escalation: no artifact to review — show why it stopped */}
+      {escalated && failEvents.length > 0 && (
+        <div className="gate-checks dc-escal">
+          <div className="review-label">⚠ Escalated after a failed step — what happened</div>
+          {failEvents.map((e, i) => (
+            <div className={"check-row" + (e.kind === "node.escalate" ? " fail" : "")} key={i}>
+              <span className="kind">{e.kind}</span><span className="csum">{e.message}</span>
+            </div>
+          ))}
+          <div className="muted small" style={{ marginTop: 6 }}>
+            The step failed (no output produced). <b>Reject &amp; rework</b> re-runs it; <b>Approve</b> skips past it. Open the run for the full execution plan.
+          </div>
+        </div>
+      )}
       {det === undefined && <div className="muted small">loading evidence…</div>}
 
       {/* decide */}
@@ -162,7 +181,7 @@ function DecisionCard({ it, codePath, onDecided }: {
   );
 }
 
-export function InboxPage({ inbox, onDecided }: { inbox: InboxItem[]; onDecided: () => void }) {
+export function InboxPage({ inbox, onDecided, onOpenRun }: { inbox: InboxItem[]; onDecided: () => void; onOpenRun?: (id: string) => void }) {
   const [codePath, setCodePath] = useState<string | undefined>();
   useEffect(() => {
     api.workspaces().then((d) => setCodePath(d.workspaces.find((w) => w.id === getWorkspace())?.code_path || undefined)).catch(() => { /* */ });
@@ -181,7 +200,7 @@ export function InboxPage({ inbox, onDecided }: { inbox: InboxItem[]; onDecided:
           <div><b>You're all caught up.</b><br /><span className="muted">No gates waiting — agents are running autonomously.</span></div>
         </div>
       )}
-      {inbox.map((it) => <DecisionCard key={it.run_id} it={it} codePath={codePath} onDecided={onDecided} />)}
+      {inbox.map((it) => <DecisionCard key={it.run_id} it={it} codePath={codePath} onDecided={onDecided} onOpenRun={onOpenRun} />)}
     </div>
   );
 }

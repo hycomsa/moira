@@ -981,6 +981,13 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .fb-ic { flex: 0 0 auto; }
 .fb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* inbox: open-run link + failed-escalation context */
+.dc-open { flex: 0 0 auto; align-self: flex-start; white-space: nowrap; }
+.dc-escal { border: 1px solid color-mix(in srgb,#f85149 35%,var(--border)); border-radius: 8px;
+  background: color-mix(in srgb,#f85149 6%,transparent); padding: 10px; margin-top: 10px; }
+.dc-escal .check-row .kind { font-family: var(--font-mono); font-size: 11px; color: var(--muted); flex: 0 0 auto; }
+.dc-escal .check-row .csum { color: var(--text); word-break: break-word; }
+
 /* traceability graph */
 .trace-head-bar { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; }
 .trace-graph-page { display: flex; flex-direction: column; height: 100%; }

@@ -113,7 +113,7 @@ export function App() {
         <main className="content" key={wsKey}>
           {view === "overview" && <Overview onNavigate={(v) => setView(v as View)} />}
           {view === "runs" && <RunsPage onDecided={refreshInbox} focusRun={focusRun} />}
-          {view === "inbox" && <InboxPage inbox={inbox} onDecided={refreshInbox} />}
+          {view === "inbox" && <InboxPage inbox={inbox} onDecided={refreshInbox} onOpenRun={openRun} />}
           {view === "pipelines" && <PipelinesPage />}
           {view === "agents" && <AgentsPage />}
           {view === "skills" && <SkillsPage onOpenRun={openRun} />}
