@@ -95,6 +95,9 @@ artifacts (intents, requirements, func-specs, ADRs) — gated, audited, git-nati
 - Reviewing in the Inbox, each gate shows a **📄 Authored** chip → click to read the
   produced artifact + its **provenance orbit**. Approve to continue the chain;
   reject to send feedback back and re-run that step.
+- **Discovery is a pipeline under the hood** — the chain compiles to an *author → gate* DAG on the same
+  engine, so these authoring skills are also available on the **Pipelines** page (e.g. `sdlc-discovery`:
+  *Intent → Requirements → Func-spec*, gated at each step) and editable like any pipeline.
 
 ## 6. SDLC runs — pipelines against a func-spec
 
@@ -119,8 +122,11 @@ A modern node editor (your pipelines are YAML in the repo):
 - **Wire** — drag a node's right port → another's left port (dependencies);
   set a **reject → goto** rework edge; click an edge to delete.
 - **Node Settings (right)** — agent, **per-node model + backend override**
-  (cross-model wiring), retries; for gates: segmented **mode** (auto/hybrid/
-  human/off) + persona + confidence sliders; for auto-checks: the shell command.
+  (cross-model wiring), retries, **per-node budget** (timeout / max-turns) for heavy steps;
+  for gates: segmented **mode** (auto/hybrid/human/off) + persona + confidence sliders; for
+  auto-checks: a shell command **or** a built-in check (`ac_coverage`, `test_exec`).
+- **Skill nodes** — a node can drive an AI SDLC **skill** (authoring), not just an agent. Authoring
+  pipelines run against the AI SDLC repo; coding pipelines against the code repo.
 - **Run vs** picks the func-spec; **Save** writes the YAML; **▶ Run** launches it.
 
 ## 8. Gates & the Inbox ("Pending decisions")
@@ -129,10 +135,16 @@ Gates are checkpoints. Modes: **auto** (verifier verdict; HIGH/CRITICAL escalate
 **hybrid** (confidence-routed: high→accept, low→deny, middle→human) · **human**
 (a persona approves) · **off**. A waiting gate appears in the **Inbox** as a
 decision card showing:
+- a **decision-ready chip** — AC-coverage (`✓ AC 15/15` / `⚠ AC 3/15`) and the latest **⚖ LLM
+  conformance** %, so you judge completeness before approving,
 - a **verdict banner** (✓ all checks green / ⚠ N checks failing),
-- the **checks feeding the gate** (verifier/auto-check results, failures in red),
+- the **checks feeding the gate** (verifier / `AUTO_CHECK` results — `ac_coverage` ensures every AC has a
+  task, `test_exec` runs the test suite — failures in red),
 - **📄 Authored** artifacts (discovery) and **Proposed changes** (the file diff),
 - a **decision note** (recorded in the audit) + **Approve** / **Reject & rework**.
+
+If a step **failed** (e.g. an agent timed out) the run escalates here: the card shows **why** (the
+timeout / retry / escalate events) and an **Open run →** link to the full execution plan.
 
 **Client gate**: a business-language approval for a non-technical client (summary +
 requirements, never code). Tune hybrid thresholds under **Settings**.
@@ -148,6 +160,10 @@ requirements, never code). Tune hybrid thresholds under **Settings**.
   targeted it, as a **List** or a **Graph**; click an artifact to read it. The
   **provenance orbit** (also in artifact views and run pre-flight) shows where an
   artifact came from / what's in the model's context.
+- **Completeness** — Moira measures **Spec ↔ Tests ↔ Tasks ↔ Code** per func-spec deterministically from
+  the repo (ACs decomposed into tasks, ACs covered by a test plan, tasks done), shown as a badge + panel
+  on the run and as a **delivery-health dashboard** on **Overview** (per-FUNC decomposed / tested / built).
+  An optional **LLM conformance** scorecard (spec ↔ code) sits beside it as a second, qualitative signal.
 
 ## 10. Other pages
 

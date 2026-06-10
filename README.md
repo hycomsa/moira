@@ -3,40 +3,36 @@
 [![CI](https://github.com/hycomsa/moira/actions/workflows/ci.yml/badge.svg)](https://github.com/hycomsa/moira/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-AI-native SDLC cockpit — governed orchestration layer **above** best-of-breed agent backends.
+AI-native SDLC cockpit — a **governed orchestration layer above** best-of-breed agent backends.
 
-> **One repo.** This is the whole Moira product: `orchestrator/` (Python sidecar) +
-> `cockpit/` (React/TS) + `src-tauri/` (desktop shell). The AI SDLC framework content
-> (intents, requirements, specs, agents, skills) and any target application code live in
-> **separate** repositories that Moira reads/writes as a *workspace* — they are not part of
-> this repo.
+> ### The speed of AI. The calm of someone who has the proof.
+> Moira drives AI agents across the whole lifecycle — **intent → requirements → design → code → QA → deploy** —
+> behind human quality gates, with a git-native, tamper-evident decision trail and model-agnostic execution.
+> It doesn't re-implement an agent harness; it **orchestrates** pluggable frontier backends (Claude Code CLI,
+> OpenAI Codex CLI, direct API) and adds the governance, traceability and cockpit layer on top.
 
-Moira drives AI agents across the software development lifecycle (intent → requirements → design → code → QA → deploy) with human quality gates, git-native decision provenance, and model-agnostic execution. It does **not** re-implement an agent harness — it orchestrates pluggable frontier backends (Claude Code CLI, OpenAI Codex CLI, direct API) and adds the governance, traceability, and cockpit layer on top.
+**See it:** [marketing one-pager](docs/moira-landing.en.html) · **Run it:** [`USER_GUIDE.md`](USER_GUIDE.md) · **Build it:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
-## Status: v0.1 (in development)
+![Delivery-health dashboard — every func-spec's decomposed / tested / built / conformance, at a glance](docs/assets/delivery-health.png)
 
-End-to-end on a real project (CSL Driver): shape specs via Discovery skills →
-guided/visual pipeline runs → human gates → tamper-evident git-native audit →
-report & traceability. **Built & verified (137 unit tests):**
-- `orchestrator/` — dependency-free DAG engine + gates (auto/hybrid/human/off) +
-  pluggable backends (mock/claude_code/litellm) + audit with **tamper-evident
-  hash chain** + pluggable persistence (**SQLite / PostgreSQL / git mirror**) +
-  HTTP API. Drives AI SDLC **skills** for discovery (single + chained). Deterministic
-  **AUTO_CHECK** gates: `ac_coverage` (every acceptance criterion has a task) and
-  `test_exec` (the project's test suite actually passes) — escalate on a gap.
-- **Git-native task/epic backlog** (Zdzira-compatible — one markdown per ticket):
-  `pm@decompose-func` turns a func-spec into an epic + tasks tagged by acceptance
-  criterion; Moira measures **completeness** (Spec ↔ Tests ↔ Tasks ↔ Code) deterministically
-  from the repo, alongside an optional **LLM conformance** scorecard. The same files
-  open in [Zdzira PM](https://github.com/hycomsa) — one format, four tools.
-- `cockpit/` — React + TS + Vite cockpit: Overview (mission control + **delivery-health
-  dashboard** — per-FUNC decomposed/tested/built/conformance), Runs (+ run metrics, report,
-  **traceability badge & panel**, context orbit), **decision-ready** Inbox (coverage +
-  conformance on every gate card), a modern pipeline editor, Discovery, Files, Traceability
-  (list + graph + provenance orbit), reusable UI primitives, profile menu. Plus a **mobile**
-  gate inbox (`/m`).
-- `src-tauri/` — Tauri v2 desktop shell (spawns the Python sidecar). Needs
-  `cargo tauri` + webkit2gtk.
+## What Moira gives you
+
+- **Governed gates** — auto / hybrid / human, with a **decision-ready Inbox**: every gate card shows AC-coverage + conformance, and a *failed* step shows the error with a one-click jump into the run.
+- **Git-native, tamper-evident audit** — every step and decision in a hash-chained trail; pluggable persistence (**SQLite / PostgreSQL / git mirror**).
+- **End-to-end traceability** — **Spec ↔ Tests ↔ Tasks ↔ Code** completeness, measured deterministically from the repo, plus an optional **LLM conformance** scorecard as a second opinion.
+- **Git-native task/epic backlog** — Zdzira-compatible, one markdown per ticket; `pm@decompose-func` turns a func-spec into an epic + tasks tagged by acceptance criterion. *One format, four tools.*
+- **Deterministic quality gates** — `AUTO_CHECK` nodes: `ac_coverage` (every AC has a task) and `test_exec` (the test suite actually passes) — escalate to a human on a gap.
+- **Delivery-health dashboard** — per-FUNC decomposed / tested / built / conformance across the whole repo, in one view.
+- **Discovery (BA mode)** — drive AI SDLC skills to author intents / requirements / func-specs, gated at each step — as guided presets *or* as a real pipeline.
+- **Model-agnostic, anywhere** — Claude Code CLI · LiteLLM (frontier + local, anti-lock-in) · Codex CLI. **Desktop · web · mobile** (gate inbox at `/m`).
+
+![Traceability panel — Spec ↔ Tests ↔ Tasks ↔ Code completeness + LLM conformance, per run](docs/assets/traceability-panel.png)
+
+> **One repo.** This is the whole Moira product: `orchestrator/` (Python sidecar) + `cockpit/` (React/TS) +
+> `src-tauri/` (desktop shell). The AI SDLC framework content (intents, requirements, specs, agents, skills)
+> and any target application code live in **separate** repositories Moira reads/writes as a *workspace*.
+
+**Status — v0.1 · 138 unit tests green · proven end-to-end on a real project (CSL Driver).**
 
 ## Getting started
 
