@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/moira-hero.jpg" alt="Moira — AI-native SDLC cockpit" width="820">
+</p>
+
 # Moira
 
 [![CI](https://github.com/hycomsa/moira/actions/workflows/ci.yml/badge.svg)](https://github.com/hycomsa/moira/actions/workflows/ci.yml)
@@ -13,7 +17,9 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 
 **See it:** [marketing one-pager](docs/moira-landing.en.html) · **Run it:** [`USER_GUIDE.md`](USER_GUIDE.md) · **Build it:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
-![Delivery-health dashboard — every func-spec's decomposed / tested / built / conformance, at a glance](docs/assets/delivery-health.png)
+![Moira mission control — runs, success rate, gates awaiting you, and delivery-health per func-spec](docs/assets/overview-mission-control.png)
+
+<p align="center"><sub><i>Mission control — runs, success rate, gates awaiting you, delivery-health per func-spec.</i></sub></p>
 
 ## What Moira gives you
 
@@ -26,7 +32,16 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 - **Discovery (BA mode)** — drive AI SDLC skills to author intents / requirements / func-specs, gated at each step — as guided presets *or* as a real pipeline.
 - **Model-agnostic, anywhere** — Claude Code CLI · LiteLLM (frontier + local, anti-lock-in) · Codex CLI. **Desktop · web · mobile** (gate inbox at `/m`).
 
-![Traceability panel — Spec ↔ Tests ↔ Tasks ↔ Code completeness + LLM conformance, per run](docs/assets/traceability-panel.png)
+## What it looks like
+
+![A run — execution plan, AUTO_CHECKs, the outputs it produced, and Spec ↔ Tests ↔ Tasks ↔ Code traceability](docs/assets/run-traceability.png)
+<p align="center"><sub><i>A run: the execution plan + AUTO_CHECKs, the outputs it produced, and Spec ↔ Tests ↔ Tasks ↔ Code traceability.</i></sub></p>
+
+![Decision-ready Inbox — AC-coverage chip, the checks feeding the gate, the diff, Approve / Reject](docs/assets/inbox-decision-ready.png)
+<p align="center"><sub><i>Decision-ready Inbox — AC-coverage chip, the checks feeding the gate, the diff, Approve / Reject &amp; rework.</i></sub></p>
+
+![Discovery — drive AI SDLC skills to author intents / requirements / func-specs, gated at each step](docs/assets/discovery-presets.png)
+<p align="center"><sub><i>Discovery — drive AI SDLC skills to author intents / requirements / func-specs, gated at each step.</i></sub></p>
 
 > **One repo.** This is the whole Moira product: `orchestrator/` (Python sidecar) + `cockpit/` (React/TS) +
 > `src-tauri/` (desktop shell). The AI SDLC framework content (intents, requirements, specs, agents, skills)
