@@ -210,9 +210,12 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               {(() => {
                 const auditDur = detail.audit.reduce((a, x) => a + (x.duration || 0), 0);
                 const c: Record<string, number> = {};
+                const NOISE = new Set(["", "(default)", "mock", "claude_code", "litellm"]);
                 detail.audit.forEach((a) => {
                   const inp = a.input as { model?: string; backend?: string };
-                  const l = inp?.model && inp.model !== "(default)" ? inp.model : inp?.backend;
+                  const be = inp?.backend;
+                  if (!be) return; // gates / non-execution steps don't define the model
+                  const l = inp?.model && !NOISE.has(inp.model) ? inp.model : be;
                   if (l) c[l] = (c[l] || 0) + 1;
                 });
                 const model = Object.entries(c).sort((x, y) => y[1] - x[1])[0]?.[0];

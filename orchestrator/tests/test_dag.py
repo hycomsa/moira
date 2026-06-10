@@ -161,6 +161,9 @@ class TestSkillPipelineNode(unittest.TestCase):
         self.assertEqual(n.skill, "ba@shape-intent-spec")
         self.assertEqual(n.role, "ba-skill")
         self.assertEqual(n.backend, "claude_code")
+        # must NOT inherit the Node default model="mock": a skill node runs on claude_code
+        # with the backend default, and a stale "mock" here would mislabel the run's leading model.
+        self.assertEqual(n.model, "")
         self.assertEqual(n.type, NodeType.PRODUCER)
         self.assertEqual(pipe.nodes[1].type, NodeType.GATE)
 

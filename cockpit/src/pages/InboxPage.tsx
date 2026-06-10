@@ -50,7 +50,8 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
     if (!det) return null;
     const dur = audit.reduce((a, x) => a + (x.duration || 0), 0);
     const c: Record<string, number> = {};
-    audit.forEach((a) => { const i = a.input as { model?: string; backend?: string }; const l = i?.model && i.model !== "(default)" ? i.model : i?.backend; if (l) c[l] = (c[l] || 0) + 1; });
+    const NOISE = new Set(["", "(default)", "mock", "claude_code", "litellm"]);
+    audit.forEach((a) => { const i = a.input as { model?: string; backend?: string }; const be = i?.backend; if (!be) return; const l = i?.model && !NOISE.has(i.model) ? i.model : be; if (l) c[l] = (c[l] || 0) + 1; });
     const model = Object.entries(c).sort((x, y) => y[1] - x[1])[0]?.[0];
     return { usd: det.cost.usd, tokens: det.cost.tokens_in + det.cost.tokens_out, duration: dur, model };
   }, [det, audit]);

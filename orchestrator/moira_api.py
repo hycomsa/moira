@@ -284,7 +284,13 @@ def run_metrics(store: Store, run_id: str) -> dict:
         dur += r.get("duration", 0) or 0
         inp = r.get("input") or {}
         m, be = inp.get("model"), inp.get("backend")
-        label = m if (m and m != "(default)") else be
+        # Only execution steps carry a backend (gates don't) — skip the rest so a human
+        # gate can't dilute the leading model. A "model" that is really a backend name or a
+        # placeholder ("mock"/"claude_code"/"(default)") is not a model — fall back to the
+        # backend, so a claude_code skill node isn't mislabelled "mock".
+        if not be:
+            continue
+        label = m if (m and m not in ("(default)", "mock", "claude_code", "litellm")) else be
         if label:
             labels[label] += 1
     return {"usd": round(usd, 4), "tokens": ti + to, "duration": round(dur, 1),
