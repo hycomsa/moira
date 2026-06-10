@@ -4,7 +4,7 @@ import { FilesDiff } from "../components/FilesDiff";
 import { ProjectWizard } from "../components/ProjectWizard";
 import { ArtifactModal } from "../components/ArtifactModal";
 import { Modal } from "../components/Modal";
-import { Metrics } from "../components/Metrics";
+import { Metrics, fmtDur, fmtTokens } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
 import { OrbitGraph } from "../components/OrbitGraph";
 import { ScorecardView } from "../components/Scorecard";
@@ -208,7 +208,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               <Dot s={detail.run.status} /><strong>{detail.pipeline.name}</strong>
               <span className="muted">· {detail.run.run_id}</span>
               {(() => {
-                const dur = detail.audit.reduce((a, x) => a + (x.duration || 0), 0);
+                const auditDur = detail.audit.reduce((a, x) => a + (x.duration || 0), 0);
                 const c: Record<string, number> = {};
                 detail.audit.forEach((a) => {
                   const inp = a.input as { model?: string; backend?: string };
@@ -216,7 +216,14 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                   if (l) c[l] = (c[l] || 0) + 1;
                 });
                 const model = Object.entries(c).sort((x, y) => y[1] - x[1])[0]?.[0];
-                return <Metrics m={{ usd: detail.cost.usd, tokens: detail.cost.tokens_in + detail.cost.tokens_out, duration: dur, model }} />;
+                // Blend live progress so the rollup advances *during* a node, not only once an
+                // audit record is written at the gate: total wall-clock for the elapsed, and the
+                // active node's in-flight tokens on top of the completed (audited) ones.
+                const liveTok = (live?.tokens_in || 0) + (live?.tokens_out || 0);
+                const running = live?.status === "running" && !!live?.active_node;
+                const dur = Math.max(auditDur, live?.elapsed || 0);
+                const tokens = detail.cost.tokens_in + detail.cost.tokens_out + (running ? liveTok : 0);
+                return <Metrics m={{ usd: detail.cost.usd, tokens, duration: dur, model }} />;
               })()}
               {chain && (
                 chain.sealed
@@ -376,10 +383,14 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
             })()}
             {(live?.status === "running" || liveEvents.length > 0) && (
               <section className="panel">
-                <h3>Live{" "}
-                  <span className="muted" style={{ fontSize: 12, textTransform: "none" }}>
-                    {live?.active_node ? `· ▶ ${live.active_node} ` : ""}
-                    · ⏱ {live?.elapsed ?? 0}s · ⛁ {(live?.tokens_in || 0) + (live?.tokens_out || 0)} tok
+                <h3 className="live-head">
+                  <span>Live{" "}
+                    <span className="muted" style={{ fontSize: 12, textTransform: "none" }}>
+                      {live?.active_node ? `· ▶ ${live.active_node}` : ""}
+                    </span>
+                  </span>
+                  <span className="muted live-meta">
+                    ⏱ {fmtDur(live?.elapsed ?? 0)} · ⛁ {fmtTokens((live?.tokens_in || 0) + (live?.tokens_out || 0))} tok
                   </span>
                 </h3>
                 <div className="log live-log">

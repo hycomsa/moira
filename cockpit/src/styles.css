@@ -140,6 +140,8 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 
 .log { overflow-y: auto; flex: 1; min-height: 180px; max-height: 52vh; font-size: 12px; }
 /* live model stream (reasoning / tool calls) */
+.live-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.live-head .live-meta { flex: 0 0 auto; font-size: 12px; text-transform: none; white-space: nowrap; }
 .live-log { max-height: 320px; }
 .live-row { display: flex; gap: 8px; padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 12.5px; }
 .live-row .lr-ic { flex: 0 0 auto; opacity: .8; }

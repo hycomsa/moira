@@ -704,19 +704,23 @@ class Handler(BaseHTTPRequestHandler):
                             lines = f.readlines()
                     except OSError:
                         lines = []
-                events = []
-                for ln in lines[frm:]:
+                # parse ALL lines once: the incremental slice feeds the event log, but the
+                # token counters must come from the full buffer — otherwise a poll window with
+                # no usage record would make the live token count flicker back to 0.
+                all_events = []
+                for ln in lines:
                     try:
-                        events.append(json.loads(ln))
+                        all_events.append(json.loads(ln))
                     except json.JSONDecodeError:
                         pass
+                events = all_events[frm:]
                 run = store.get_run(run_id)
                 state = store.get_run_state(run_id) or {}
                 active = next((nid for nid, s in state.items() if s == "running"), None)
-                last = next((e for e in reversed(events) if e.get("tokens_in") or e.get("tokens_out")), {})
+                last = next((e for e in reversed(all_events) if e.get("tokens_in") or e.get("tokens_out")), {})
                 status = run["status"] if run else "?"
                 elapsed = round(_t.time() - run["created_at"]) if (run and status == "running") else 0
-                return self._send(200, {"events": events, "next": len(lines),
+                return self._send(200, {"events": events, "next": len(all_events),
                                         "tokens_in": last.get("tokens_in", 0), "tokens_out": last.get("tokens_out", 0),
                                         "elapsed": elapsed, "active_node": active, "status": status})
             if path.startswith("/api/runs/") and path.endswith("/report"):
