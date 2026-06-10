@@ -646,6 +646,9 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .block-chip.func { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .trace-title { font-size: 12px; color: var(--text); }
 .trace-run { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.trace-run.trace-run-btn { cursor: pointer; padding: 2px 4px; margin: 0 -4px; border-radius: 6px; }
+.trace-run.trace-run-btn:hover { background: var(--hover, rgba(255,255,255,.06)); }
+.trace-run.trace-run-btn:hover .rid { color: var(--accent); text-decoration: underline; }
 .trace-run .rid { font-family: monospace; }
 
 /* ===== Overview — mission control ===== */

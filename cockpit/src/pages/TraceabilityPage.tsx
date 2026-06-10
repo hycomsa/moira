@@ -32,7 +32,7 @@ function TraceNode({ data }: NodeProps) {
 }
 const nodeTypes = { trace: TraceNode };
 
-export function TraceabilityPage() {
+export function TraceabilityPage({ onOpenRun }: { onOpenRun?: (id: string) => void }) {
   const [funcs, setFuncs] = useState<TraceFunc[]>([]);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [view, setView] = useState<"list" | "graph">("list");
@@ -84,7 +84,7 @@ export function TraceabilityPage() {
         <div className="trace-canvas">
           <ReactFlow nodes={gNodes} edges={gEdges} nodeTypes={nodeTypes} fitView
             nodesConnectable={false} elementsSelectable
-            onNodeClick={(_, n) => { const k = (n.data as { kind: string }).kind; if (k !== "RUN") open(n.id); }}
+            onNodeClick={(_, n) => { const k = (n.data as { kind: string }).kind; if (k === "RUN") onOpenRun?.(n.id); else open(n.id); }}
             proOptions={{ hideAttribution: true }} minZoom={0.2}>
             <Background color="var(--border)" gap={24} size={1.5} />
             <Controls showInteractive={false} />
@@ -122,7 +122,10 @@ export function TraceabilityPage() {
                     <div className="trace-label">Runs ({f.runs.length})</div>
                     {f.runs.length === 0 && <span className="muted small">no runs yet</span>}
                     {f.runs.map((r) => (
-                      <div className="trace-run" key={r.run_id}>
+                      <div className={"trace-run" + (onOpenRun ? " trace-run-btn" : "")} key={r.run_id}
+                           onClick={onOpenRun ? () => onOpenRun(r.run_id) : undefined}
+                           title={onOpenRun ? `Open ${r.run_id} in Runs` : undefined}
+                           role={onOpenRun ? "button" : undefined}>
                         <Dot s={r.status} /><span className="rid">{r.run_id.replace("run-", "").slice(0, 8)}</span>
                         <Metrics m={r} compact />
                       </div>

@@ -118,7 +118,7 @@ export function App() {
           {view === "agents" && <AgentsPage />}
           {view === "skills" && <SkillsPage onOpenRun={openRun} />}
           {view === "files" && <FilesPage />}
-          {view === "trace" && <TraceabilityPage />}
+          {view === "trace" && <TraceabilityPage onOpenRun={openRun} />}
           {view === "activity" && <ActivityPage />}
           {view === "settings" && <SettingsPage />}
         </main>
