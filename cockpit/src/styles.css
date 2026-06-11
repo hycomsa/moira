@@ -779,8 +779,27 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
   border-radius: 18px; padding: 4px 10px 4px 8px; font-size: 11px; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px -12px #000; }
 .orbit-node:hover:not(:disabled) { border-color: var(--oc); box-shadow: 0 0 0 4px color-mix(in srgb,var(--oc) 16%,transparent); }
 .orbit-node:disabled { cursor: default; }
+.orbit-node.sel { border-color: var(--oc); background: color-mix(in srgb,var(--oc) 16%,var(--panel));
+  box-shadow: 0 0 0 4px color-mix(in srgb,var(--oc) 22%,transparent); }
 .orbit-node .on-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--oc); flex: none; }
 .orbit-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+
+/* slide-out node detail */
+.orbit-detail { max-width: 340px; margin: 10px auto 0; border: 1px solid color-mix(in srgb,var(--oc) 45%,var(--border));
+  border-left: 3px solid var(--oc); border-radius: 8px; background: var(--panel); padding: 10px 12px;
+  overflow: hidden; animation: orbitSlide .2s ease-out; }
+@keyframes orbitSlide { from { opacity: 0; transform: translateY(-6px); max-height: 0; } to { opacity: 1; transform: translateY(0); max-height: 220px; } }
+.orbit-detail .od-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.orbit-detail .od-kind { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+  color: var(--oc); background: color-mix(in srgb,var(--oc) 14%,transparent); padding: 2px 8px; border-radius: 10px; }
+.orbit-detail .od-x { background: none; border: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.orbit-detail .od-x:hover { color: var(--text); }
+.orbit-detail .od-id { font-family: var(--font-mono, monospace); font-size: 13px; color: var(--text); margin: 8px 0 4px; word-break: break-all; }
+.orbit-detail .od-desc { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.orbit-detail .od-open { margin-top: 10px; background: color-mix(in srgb,var(--oc) 14%,transparent);
+  border: 1px solid color-mix(in srgb,var(--oc) 45%,var(--border)); color: var(--oc); font-size: 12px; font-weight: 600;
+  border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.orbit-detail .od-open:hover { background: color-mix(in srgb,var(--oc) 24%,transparent); }
 
 /* ===== Profile / account menu ===== */
 .profile { position: relative; }
