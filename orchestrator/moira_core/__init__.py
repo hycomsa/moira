@@ -12,6 +12,10 @@ from .persistence import RunStore, ExportSink, CompositeStore, make_run_store
 from .git_sink import GitExportSink
 from .runner import DurableRunner
 from .validation import validate_pipeline
+from .governance import (
+    validate_pack, compile_pack, pack_fingerprint, attach_pack,
+    summarize_governance, applied_marker,
+)
 
 __version__ = "0.1.0"
 
@@ -24,4 +28,6 @@ __all__ = [
     "default_sdlc_pipeline", "client_gated_pipeline", "available_pipelines",
     "RunStore", "ExportSink", "CompositeStore", "make_run_store", "GitExportSink",
     "DurableRunner", "validate_pipeline",
+    "validate_pack", "compile_pack", "pack_fingerprint", "attach_pack",
+    "summarize_governance", "applied_marker",
 ]

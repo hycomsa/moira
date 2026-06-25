@@ -9,6 +9,7 @@ trace FUNC -> REQ -> INT, which becomes the audit record's `lineage`.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -181,6 +182,44 @@ class AISdlcRepo:
             fm, body = self._frontmatter(text)
             if f.stem == reg_id or fm.get("id") == reg_id:
                 return body or text
+        return None
+
+    # ---- governance packs (.ai/standards/compliance/packs/*.json) --------- #
+    @property
+    def packs_dir(self) -> Path:
+        return self.compliance_dir / "packs"
+
+    def list_packs(self) -> list[dict[str, Any]]:
+        """All governance packs in the repo (project-owned; no built-in fallback)."""
+        d = self.packs_dir
+        if not d.exists():
+            return []
+        out = []
+        for f in sorted(d.glob("*.json")):
+            try:
+                pack = json.loads(f.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if isinstance(pack, dict):
+                pack.setdefault("id", f.stem)
+                out.append(pack)
+        return out
+
+    def get_pack(self, pack_id: str) -> Optional[dict[str, Any]]:
+        """Load one pack by id (filename or `id` field). None if absent/invalid."""
+        d = self.packs_dir
+        if not d.exists():
+            return None
+        cand = d / f"{pack_id}.json"
+        files = [cand] if cand.exists() else list(d.glob("*.json"))
+        for f in files:
+            try:
+                pack = json.loads(f.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if isinstance(pack, dict) and (f.stem == pack_id or pack.get("id") == pack_id):
+                pack.setdefault("id", f.stem)
+                return pack
         return None
 
     # ---- skills (Cezar-style: skills live in the repo) -------------------- #

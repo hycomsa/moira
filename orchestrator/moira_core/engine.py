@@ -19,10 +19,14 @@ This supersedes LangGraph for now (ADR-002): it delivers arbitrary DAG + paralle
 from __future__ import annotations
 
 import logging
+import os
+import re
 import shlex
+import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Optional
 
 from .backends.base import BackendRegistry
@@ -268,6 +272,8 @@ class Engine:
             return self._run_ac_coverage_check(node, context)
         if node.check_kind == "test_exec":
             return self._run_test_exec_check(node, context)
+        if node.check_kind == "log_hygiene":
+            return self._run_log_hygiene_check(node, context)
         return self._run_shell_check(node, context)
 
     @staticmethod
@@ -356,9 +362,25 @@ class Engine:
                              findings=[finding], cost=Cost(), ok=True)
 
     def _run_shell_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
-        """AUTO_CHECK: run a real command; exit 0 = pass (INFO), non-zero = fail (HIGH)."""
+        """AUTO_CHECK: run a real command; exit 0 = pass (INFO), non-zero = fail (HIGH).
+
+        If the command's executable is not on PATH, the check is **not applicable**
+        (status=not_applicable, passed, INFO) rather than a failure — a governance
+        pack can declare e.g. an `axe`/`gitleaks` check that's simply skipped where
+        the tool isn't installed (must-fix #5: "executed or explicitly marked N/A").
+        """
         cmd = node.check_cmd or "true"
         cwd = context.get("cwd")
+        exe = shlex.split(cmd)[0] if cmd.strip() else "true"
+        if exe != "true" and shutil.which(exe) is None:
+            finding = Finding(id=node.id, title=f"{exe} not available — check skipped",
+                              severity=Severity.INFO, confidence=1.0,
+                              detail=f"executable '{exe}' not found on PATH; check marked not applicable")
+            return BackendResult(
+                output={"check": "shell", "cmd": cmd, "status": "not_applicable",
+                        "passed": True, "reason": f"{exe} not installed"},
+                tools_used=[f"shell:{exe}"], decisions=[f"{exe} not installed -> not applicable"],
+                findings=[finding], cost=Cost(), ok=True)
         try:
             proc = subprocess.run(shlex.split(cmd), cwd=cwd, capture_output=True,
                                   text=True, timeout=300)
@@ -375,6 +397,86 @@ class Engine:
             decisions=[f"ran `{cmd}` in {cwd or '.'} -> {'pass' if ok else 'FAIL'}"],
             findings=[finding], cost=Cost(), ok=True,
         )
+
+    # log-hygiene scan patterns (deterministic, zero external deps)
+    _LOG_CALL_RE = re.compile(
+        r"(?:\blog(?:ger)?\s*\.\s*(?:debug|info|warning|warn|error|critical|exception|trace)"
+        r"|console\s*\.\s*(?:log|info|warn|error|debug)"
+        r"|System\.out\.print(?:ln)?|\bprintln!)\s*\(", re.I)
+    _RAW_PRINT_RE = re.compile(
+        r"(?:(?:^|[^.\w])print\s*\(|console\s*\.\s*log\s*\(|System\.out\.print)", re.I)
+    _SENSITIVE_RE = re.compile(
+        r"\b(?:pass(?:word|wd)?|pwd|secret|tokens?|api[_-]?keys?|apikey|authorization|bearer"
+        r"|private[_-]?key|credit[_-]?card|card[_-]?number|cvv|ssn|pesel)\b", re.I)
+    _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+    _PESEL_RE = re.compile(r"\b\d{11}\b")
+    _CARD_RE = re.compile(r"\b(?:\d[ -]?){13,16}\b")
+    _CODE_EXT = {".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".rs",
+                 ".php", ".cs", ".kt", ".scala", ".c", ".cpp", ".h"}
+    _SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build", "target",
+                  "__pycache__", ".moira-runs", ".idea", ".vscode"}
+    _SEV_RANK = {Severity.INFO: 0, Severity.LOW: 1, Severity.MEDIUM: 2,
+                 Severity.HIGH: 3, Severity.CRITICAL: 4}
+
+    def _run_log_hygiene_check(self, node: Node, context: dict[str, Any]) -> BackendResult:
+        """Deterministic log-hygiene scan (no external tooling):
+
+        - sensitive data (password/token/secret/api-key + PII: email/PESEL/card)
+          interpolated into a log/print statement  -> CRITICAL (blocks the gate)
+        - raw print()/console.log()/System.out in non-test application code -> MEDIUM
+
+        Scans source files under `cwd` (skips vendor/build/test dirs). One Finding
+        per issue (capped) so a CRITICAL leak makes `has_blocking()` true.
+        """
+        cwd = context.get("cwd")
+        issues: list[tuple[Severity, str, int, str]] = []
+        files_scanned = 0
+        cap = 200
+        if cwd and os.path.isdir(cwd):
+            for root, dirs, files in os.walk(cwd):
+                dirs[:] = [d for d in dirs if d not in self._SKIP_DIRS]
+                parts = set(Path(root).parts)
+                dir_is_test = bool(parts & {"tests", "test", "__tests__", "spec", "specs"})
+                for fn in files:
+                    if Path(fn).suffix.lower() not in self._CODE_EXT:
+                        continue
+                    is_test = dir_is_test or fn.startswith("test_") or fn.endswith(
+                        ("_test.py", "_test.go", ".test.ts", ".spec.ts", ".test.js", ".spec.js"))
+                    fp = Path(root) / fn
+                    try:
+                        text = fp.read_text(encoding="utf-8", errors="replace")
+                    except Exception:  # noqa: BLE001
+                        continue
+                    files_scanned += 1
+                    rel = os.path.relpath(str(fp), cwd)
+                    for i, line in enumerate(text.splitlines(), 1):
+                        if len(issues) >= cap:
+                            break
+                        if self._LOG_CALL_RE.search(line) and (
+                                self._SENSITIVE_RE.search(line) or self._EMAIL_RE.search(line)
+                                or self._PESEL_RE.search(line) or self._CARD_RE.search(line)):
+                            issues.append((Severity.CRITICAL, rel, i, "sensitive data in log statement"))
+                        elif not is_test and self._RAW_PRINT_RE.search(line):
+                            issues.append((Severity.MEDIUM, rel, i,
+                                           "raw print/console.log in application code"))
+        passed = not issues
+        max_sev = max((s for s, _, _, _ in issues), key=lambda s: self._SEV_RANK[s],
+                      default=Severity.INFO)
+        findings = [Finding(id=f"{node.id}:{i}", severity=sev, confidence=1.0,
+                            title=msg, detail=f"{rel}:{ln} — {msg}")
+                    for i, (sev, rel, ln, msg) in enumerate(issues)] or [
+            Finding(id=node.id, severity=Severity.INFO, confidence=1.0,
+                    title="log hygiene clean", detail=f"scanned {files_scanned} file(s); no issues")]
+        by_sev: dict[str, int] = {}
+        for s, _, _, _ in issues:
+            by_sev[s.value] = by_sev.get(s.value, 0) + 1
+        return BackendResult(
+            output={"check": "log_hygiene", "passed": passed, "files_scanned": files_scanned,
+                    "issues_count": len(issues), "by_severity": by_sev,
+                    "issues": [f"{rel}:{ln} [{sev.value}] {msg}" for sev, rel, ln, msg in issues[:50]]},
+            tools_used=["log_hygiene"],
+            decisions=[f"scanned {files_scanned} file(s) -> {len(issues)} issue(s), max={max_sev.value}"],
+            findings=findings, cost=Cost(), ok=True)
 
     def _persist_exec(self, run_id: str, node: Node, ex: dict, context: dict[str, Any]) -> None:
         attempts = node.max_retries + 1 if node.type != NodeType.AUTO_CHECK else 1

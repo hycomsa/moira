@@ -32,7 +32,7 @@ from moira_core import (  # noqa: E402
     AISdlcRepo, BackendRegistry, Engine, GateConfig, GateDecision, GateMode,
     MockBackend, Node, NodeType, Pipeline, Store, available_pipelines, client_gated_pipeline,
     default_sdlc_pipeline, make_run_store, DurableRunner, Event, new_id,
-    validate_pipeline,
+    validate_pipeline, AuditRecord, validate_pack, attach_pack, applied_marker,
 )
 from moira_core.gates import simulate_routing  # noqa: E402
 from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
@@ -663,6 +663,18 @@ class Handler(BaseHTTPRequestHandler):
                 repo = AISdlcRepo(rp) if rp else None
                 regs = repo.list_regulations() if repo and repo.exists() else []
                 return self._send(200, {"regulations": regs})
+            if path == "/api/governance/packs":
+                rp = ws_repo(store, ws_id)
+                repo = AISdlcRepo(rp) if rp else None
+                packs = repo.list_packs() if repo and repo.exists() else []
+                return self._send(200, {"packs": packs})
+            if path.startswith("/api/governance/packs/"):
+                rp = ws_repo(store, ws_id)
+                repo = AISdlcRepo(rp) if rp else None
+                pack = repo.get_pack(path.split("/api/governance/packs/", 1)[1]) if repo else None
+                if not pack:
+                    return self._send(404, {"error": "pack not found"})
+                return self._send(200, {"pack": pack, "errors": validate_pack(pack)})
             if path == "/api/skills":
                 rp = ws_repo(store, ws_id)
                 repo = AISdlcRepo(rp) if rp else None
@@ -922,10 +934,26 @@ class Handler(BaseHTTPRequestHandler):
                 owner = body.get("owner", "tomasz.skonieczny")
                 ws_id = body.get("workspace_id", "default")
                 pipe = load_pipeline(store, ws_id, body, func_id)
+                rp = ws_repo(store, ws_id)
+                # governance packs: resolve from the repo, validate, attach (runs AFTER
+                # the work). Deterministic checks block the gate; LLM checks are advisory.
+                applied_packs = []
+                gov_packs = body.get("governance_packs") or []
+                if gov_packs:
+                    grepo = AISdlcRepo(rp) if rp else None
+                    for pid in gov_packs:
+                        pack = grepo.get_pack(pid) if grepo else None
+                        if not pack:
+                            return self._send(400, {"error": "unknown governance pack", "pack": pid})
+                        perrs = validate_pack(pack)
+                        if perrs:
+                            return self._send(400, {"error": "invalid governance pack",
+                                                    "pack": pid, "errors": perrs})
+                        attach_pack(pipe, pack, model=body.get("model", ""))
+                        applied_packs.append(pack)
                 errs = validate_pipeline(pipe)
                 if errs:
                     return self._send(400, {"error": "invalid pipeline", "errors": errs})
-                rp = ws_repo(store, ws_id)
                 ctx = context_for(func_id, rp)
                 code = ws_code_path(store, ws_id)  # real coding: agents write here (cwd)
                 authoring = any(getattr(n, "skill", "") for n in pipe.nodes)
@@ -940,6 +968,12 @@ class Handler(BaseHTTPRequestHandler):
                     ctx["backlog_dir"] = os.path.join(rp, task_model.project_config(Path(rp))["tickets_root"])
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
                 ctx["live_path"] = live_path_for(run_id)
+                # stamp which governance pack(s) applied into the sealed audit (id+version+hash)
+                for pack in applied_packs:
+                    store.save_audit(AuditRecord(
+                        step_id=new_id("step-"), run_id=run_id, node_id=f"gov-{pack['id']}",
+                        node_name=f"Governance · {pack['id']}", owner=owner,
+                        output=applied_marker(pack), status="succeeded"))
                 log.info("launch run %s func=%s pipeline=%s backend=%s owner=%s",
                          run_id, func_id, pipe.id, body.get("backend", "mock"), owner)
                 job = enqueue_run_job(store, run_id, ws_id, "drive_run", {"context": ctx})

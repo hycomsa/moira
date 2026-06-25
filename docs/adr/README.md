@@ -13,6 +13,7 @@ project's ADRs; they now live with the code they govern (ADR-005/006 P5 hygiene 
 | [004](ADR-004-dev-execution-delegated.md) | Dev execution is delegated to agent backends | Accepted (amended by ADR-006) |
 | [005](ADR-005-pluggable-persistence.md) | Pluggable persistence (SQLite/Postgres + git sink) | Accepted (amended by ADR-006) |
 | [006](ADR-006-durable-runner-execution.md) | Durable runner execution model (one model, two hosting modes) | Accepted |
+| [007](ADR-007-governance-packs.md) | Governance packs as enforceable controls (repo-only, deterministic-first) | Accepted (MVP) |
 
 > `ADR-007-agentic-engineering-workflow` was left in the `ai-sdlc` framework repo —
 > it describes the engineering workflow, not the Moira product, so its ownership is

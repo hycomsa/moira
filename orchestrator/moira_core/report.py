@@ -75,6 +75,29 @@ def render_run_report(payload: dict[str, Any], generated_at: float | None = None
         L.append(" → ".join(f"`{x}`" for x in lineage))
         L.append("")
 
+    # governance: policy coverage per applied pack (reconstructed from the sealed audit)
+    from .governance import summarize_governance
+    for pr in summarize_governance(audit):
+        L.append(f"## Governance · {pr['pack']}@{pr.get('version', '?')}")
+        L.append("")
+        L.append(f"> **Pack hash:** `{(pr.get('fingerprint') or '')[:12]}`  ")
+        L.append(f"> **Gate decision:** {pr.get('gate_decision') or '—'}  ")
+        if pr.get("required_evidence"):
+            L.append(f"> **Required evidence:** {', '.join(pr['required_evidence'])}  ")
+        if pr.get("override"):
+            ov = pr["override"]
+            L.append(f"> **Override:** by {ov.get('by', '?')} — {ov.get('reason', '')}  ")
+        L.append("")
+        L.append("| Check | Type | Status |")
+        L.append("|---|---|---|")
+        _icon = {"passed": "✓ passed", "failed": "✗ failed", "na": "— N/A",
+                 "advisory": "~ advisory", "pending": "… pending"}
+        for c in pr["checks"]:
+            L.append(f"| {c['id']} | {c['kind']} | {_icon.get(c['status'], c['status'])} |")
+        L.append("")
+        L.append("_LLM checks are qualitative evidence (advisory), not a deterministic verdict._")
+        L.append("")
+
     L.append("## Steps")
     L.append("")
     for a in audit:
