@@ -24,7 +24,7 @@ class TestPostgresRunStore(unittest.TestCase):
         from moira_core.pg_store import PostgresRunStore
         cls.store = PostgresRunStore(DSN)
         # clean slate for the test ids we use
-        for t in ("audit", "events", "runs", "workspaces"):
+        for t in ("cancellations", "workers", "jobs", "audit", "events", "runs", "workspaces"):
             cls.store.conn.execute(f"DELETE FROM {t} WHERE TRUE")
 
     @classmethod

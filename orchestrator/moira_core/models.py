@@ -41,6 +41,7 @@ class Status(str, Enum):
     FAILED = "failed"
     WAITING_GATE = "waiting_gate"
     REJECTED = "rejected"
+    CANCELLED = "cancelled"
     SKIPPED = "skipped"
 
 

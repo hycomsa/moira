@@ -52,6 +52,23 @@ class RunStore(Protocol):
     def save_audit(self, rec: AuditRecord) -> None: ...
     def audit_records(self, run_id: str) -> list[dict[str, Any]]: ...
     def run_cost(self, run_id: str) -> dict[str, Any]: ...
+    # durable execution jobs (ADR-006)
+    def enqueue_job(self, job: dict[str, Any]) -> dict[str, Any]: ...
+    def claim_next_job(self, worker_id: str, capabilities: list[str] | None = None,
+                       lease_seconds: int = 300) -> Optional[dict[str, Any]]: ...
+    def mark_job_running(self, job_id: str, worker_id: str) -> None: ...
+    def heartbeat_job(self, job_id: str, worker_id: str, lease_seconds: int = 300) -> None: ...
+    def complete_job(self, job_id: str, worker_id: str, status: str,
+                     error: str | None = None) -> None: ...
+    def release_expired_leases(self, now: float | None = None) -> int: ...
+    def jobs(self, run_id: str | None = None) -> list[dict[str, Any]]: ...
+    def request_cancellation(self, run_id: str, by: str, reason: str = "") -> None: ...
+    def cancellation_requested(self, run_id: str) -> bool: ...
+    def honor_cancellation(self, run_id: str) -> None: ...
+    def upsert_worker(self, worker: dict[str, Any]) -> None: ...
+    def heartbeat_worker(self, worker_id: str, active_job_id: str | None = None,
+                         status: str = "running") -> None: ...
+    def workers(self) -> list[dict[str, Any]]: ...
     def close(self) -> None: ...
 
 
@@ -117,6 +134,15 @@ class CompositeStore:
     def run_cost(self, run_id: str) -> dict[str, Any]:
         return self.primary.run_cost(run_id)
 
+    def jobs(self, run_id: str | None = None) -> list[dict[str, Any]]:
+        return self.primary.jobs(run_id)
+
+    def cancellation_requested(self, run_id: str) -> bool:
+        return self.primary.cancellation_requested(run_id)
+
+    def workers(self) -> list[dict[str, Any]]:
+        return self.primary.workers()
+
     # ---- writes (primary, then fan out) ----------------------------------- #
     def create_workspace(self, ws_id: str, name: str, repo_path: str,
                          code_path: str | None = None) -> None:
@@ -148,6 +174,40 @@ class CompositeStore:
     def save_audit(self, rec: AuditRecord) -> None:
         self.primary.save_audit(rec)
         self._fan("on_audit", rec)
+
+    # ---- durable execution jobs (primary only) ------------------------------ #
+    def enqueue_job(self, job: dict[str, Any]) -> dict[str, Any]:
+        return self.primary.enqueue_job(job)
+
+    def claim_next_job(self, worker_id: str, capabilities: list[str] | None = None,
+                       lease_seconds: int = 300) -> Optional[dict[str, Any]]:
+        return self.primary.claim_next_job(worker_id, capabilities, lease_seconds)
+
+    def mark_job_running(self, job_id: str, worker_id: str) -> None:
+        self.primary.mark_job_running(job_id, worker_id)
+
+    def heartbeat_job(self, job_id: str, worker_id: str, lease_seconds: int = 300) -> None:
+        self.primary.heartbeat_job(job_id, worker_id, lease_seconds)
+
+    def complete_job(self, job_id: str, worker_id: str, status: str,
+                     error: str | None = None) -> None:
+        self.primary.complete_job(job_id, worker_id, status, error)
+
+    def release_expired_leases(self, now: float | None = None) -> int:
+        return self.primary.release_expired_leases(now)
+
+    def request_cancellation(self, run_id: str, by: str, reason: str = "") -> None:
+        self.primary.request_cancellation(run_id, by, reason)
+
+    def honor_cancellation(self, run_id: str) -> None:
+        self.primary.honor_cancellation(run_id)
+
+    def upsert_worker(self, worker: dict[str, Any]) -> None:
+        self.primary.upsert_worker(worker)
+
+    def heartbeat_worker(self, worker_id: str, active_job_id: str | None = None,
+                         status: str = "running") -> None:
+        self.primary.heartbeat_worker(worker_id, active_job_id, status)
 
     def close(self) -> None:
         for s in self.sinks:

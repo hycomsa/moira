@@ -63,6 +63,47 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 CREATE INDEX IF NOT EXISTS idx_events_run ON events(run_id, seq);
 CREATE INDEX IF NOT EXISTS idx_audit_run  ON audit(run_id, seq);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id       TEXT PRIMARY KEY,
+    run_id       TEXT NOT NULL,
+    workspace_id TEXT NOT NULL DEFAULT 'default',
+    kind         TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    payload      TEXT NOT NULL DEFAULT '{}',
+    attempt      INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    lease_owner  TEXT,
+    lease_until  DOUBLE PRECISION,
+    created_at   DOUBLE PRECISION NOT NULL,
+    updated_at   DOUBLE PRECISION NOT NULL,
+    started_at   DOUBLE PRECISION,
+    finished_at  DOUBLE PRECISION,
+    last_error   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_run ON jobs(run_id, created_at);
+
+CREATE TABLE IF NOT EXISTS workers (
+    worker_id     TEXT PRIMARY KEY,
+    mode          TEXT NOT NULL,
+    host          TEXT,
+    pid           INTEGER,
+    version       TEXT,
+    capabilities  TEXT NOT NULL DEFAULT '[]',
+    status        TEXT NOT NULL,
+    active_job_id TEXT,
+    heartbeat_at  DOUBLE PRECISION NOT NULL,
+    last_error    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS cancellations (
+    run_id       TEXT PRIMARY KEY,
+    requested_by TEXT NOT NULL,
+    reason       TEXT,
+    requested_at DOUBLE PRECISION NOT NULL,
+    honored_at   DOUBLE PRECISION
+);
 """
 
 
@@ -172,6 +213,151 @@ class PostgresRunStore:
             tokens_out += c.get("tokens_out", 0)
             usd += c.get("usd", 0.0)
         return {"tokens_in": tokens_in, "tokens_out": tokens_out, "usd": round(usd, 4)}
+
+    # ---- durable execution jobs (ADR-006) ---------------------------------- #
+    @staticmethod
+    def _decode_job(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if row is None:
+            return None
+        d = dict(row)
+        try:
+            d["payload"] = json.loads(d.get("payload") or "{}")
+        except json.JSONDecodeError:
+            d["payload"] = {}
+        return d
+
+    @staticmethod
+    def _decode_worker(row: dict[str, Any]) -> dict[str, Any]:
+        d = dict(row)
+        try:
+            d["capabilities"] = json.loads(d.get("capabilities") or "[]")
+        except json.JSONDecodeError:
+            d["capabilities"] = []
+        return d
+
+    def enqueue_job(self, job: dict[str, Any]) -> dict[str, Any]:
+        now = time.time()
+        self.conn.execute(
+            "INSERT INTO jobs(job_id, run_id, workspace_id, kind, status, payload,"
+            " attempt, max_attempts, created_at, updated_at)"
+            " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (job["job_id"], job["run_id"], job.get("workspace_id", "default"),
+             job["kind"], job.get("status", "queued"), json.dumps(job.get("payload") or {}),
+             int(job.get("attempt", 0)), int(job.get("max_attempts", 3)), now, now),
+        )
+        return self.get_job(job["job_id"]) or job
+
+    def get_job(self, job_id: str) -> Optional[dict[str, Any]]:
+        row = self.conn.execute("SELECT * FROM jobs WHERE job_id=%s", (job_id,)).fetchone()
+        return self._decode_job(row)
+
+    def jobs(self, run_id: str | None = None) -> list[dict[str, Any]]:
+        if run_id:
+            rows = self.conn.execute(
+                "SELECT * FROM jobs WHERE run_id=%s ORDER BY created_at", (run_id,)
+            ).fetchall()
+        else:
+            rows = self.conn.execute("SELECT * FROM jobs ORDER BY created_at").fetchall()
+        return [self._decode_job(r) for r in rows if r is not None]  # type: ignore[arg-type]
+
+    def claim_next_job(self, worker_id: str, capabilities: list[str] | None = None,
+                       lease_seconds: int = 300) -> Optional[dict[str, Any]]:
+        now = time.time()
+        row = self.conn.execute(
+            "UPDATE jobs SET status='leased', lease_owner=%s, lease_until=%s,"
+            " attempt=attempt+1, updated_at=%s"
+            " WHERE job_id = ("
+            "   SELECT job_id FROM jobs WHERE status='queued'"
+            "   ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1"
+            " ) RETURNING *",
+            (worker_id, now + lease_seconds, now),
+        ).fetchone()
+        return self._decode_job(row)
+
+    def mark_job_running(self, job_id: str, worker_id: str) -> None:
+        now = time.time()
+        self.conn.execute(
+            "UPDATE jobs SET status='running', started_at=COALESCE(started_at, %s),"
+            " updated_at=%s WHERE job_id=%s AND lease_owner=%s",
+            (now, now, job_id, worker_id),
+        )
+
+    def heartbeat_job(self, job_id: str, worker_id: str, lease_seconds: int = 300) -> None:
+        now = time.time()
+        self.conn.execute(
+            "UPDATE jobs SET lease_until=%s, updated_at=%s WHERE job_id=%s AND lease_owner=%s"
+            " AND status IN ('leased','running')",
+            (now + lease_seconds, now, job_id, worker_id),
+        )
+
+    def complete_job(self, job_id: str, worker_id: str, status: str,
+                     error: str | None = None) -> None:
+        now = time.time()
+        self.conn.execute(
+            "UPDATE jobs SET status=%s, finished_at=%s, updated_at=%s, last_error=%s,"
+            " lease_owner=NULL, lease_until=NULL WHERE job_id=%s AND lease_owner=%s",
+            (status, now, now, error, job_id, worker_id),
+        )
+
+    def release_expired_leases(self, now: float | None = None) -> int:
+        now = now or time.time()
+        cur = self.conn.execute(
+            "UPDATE jobs SET status=CASE WHEN attempt < max_attempts THEN 'queued' ELSE 'failed' END,"
+            " lease_owner=NULL, lease_until=NULL, updated_at=%s,"
+            " last_error=CASE WHEN attempt < max_attempts THEN last_error ELSE 'lease expired; attempts exhausted' END"
+            " WHERE status IN ('leased','running') AND lease_until IS NOT NULL AND lease_until < %s",
+            (now, now),
+        )
+        return cur.rowcount
+
+    def request_cancellation(self, run_id: str, by: str, reason: str = "") -> None:
+        now = time.time()
+        self.conn.execute(
+            "INSERT INTO cancellations(run_id, requested_by, reason, requested_at, honored_at)"
+            " VALUES(%s,%s,%s,%s,NULL)"
+            " ON CONFLICT (run_id) DO UPDATE SET requested_by=EXCLUDED.requested_by,"
+            " reason=EXCLUDED.reason, requested_at=EXCLUDED.requested_at, honored_at=NULL",
+            (run_id, by, reason, now),
+        )
+
+    def cancellation_requested(self, run_id: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM cancellations WHERE run_id=%s AND honored_at IS NULL", (run_id,)
+        ).fetchone()
+        return row is not None
+
+    def honor_cancellation(self, run_id: str) -> None:
+        self.conn.execute(
+            "UPDATE cancellations SET honored_at=%s WHERE run_id=%s AND honored_at IS NULL",
+            (time.time(), run_id),
+        )
+
+    def upsert_worker(self, worker: dict[str, Any]) -> None:
+        now = time.time()
+        self.conn.execute(
+            "INSERT INTO workers(worker_id, mode, host, pid, version, capabilities, status,"
+            " active_job_id, heartbeat_at, last_error)"
+            " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+            " ON CONFLICT (worker_id) DO UPDATE SET mode=EXCLUDED.mode, host=EXCLUDED.host,"
+            " pid=EXCLUDED.pid, version=EXCLUDED.version, capabilities=EXCLUDED.capabilities,"
+            " status=EXCLUDED.status, active_job_id=EXCLUDED.active_job_id,"
+            " heartbeat_at=EXCLUDED.heartbeat_at, last_error=EXCLUDED.last_error",
+            (worker["worker_id"], worker.get("mode", "embedded"), worker.get("host"),
+             worker.get("pid"), worker.get("version", "0.1"),
+             json.dumps(worker.get("capabilities") or []), worker.get("status", "running"),
+             worker.get("active_job_id"), now, worker.get("last_error")),
+        )
+
+    def heartbeat_worker(self, worker_id: str, active_job_id: str | None = None,
+                         status: str = "running") -> None:
+        self.conn.execute(
+            "UPDATE workers SET heartbeat_at=%s, active_job_id=%s, status=%s WHERE worker_id=%s",
+            (time.time(), active_job_id, status, worker_id),
+        )
+
+    def workers(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute("SELECT * FROM workers ORDER BY heartbeat_at DESC").fetchall()
+        return [self._decode_worker(r) for r in rows]
 
     def close(self) -> None:
         self.conn.close()

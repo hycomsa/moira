@@ -21,7 +21,8 @@ dev = [
 
 [project.scripts]
 moira = "moira_cli:main"
+moira-runner = "moira_runner:main"
 
 [tool.setuptools]
-py-modules = ["moira_cli"]
+py-modules = ["moira_cli", "moira_runner"]
 packages = ["moira_core", "moira_core.backends"]

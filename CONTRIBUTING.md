@@ -32,6 +32,10 @@ as a *workspace*, but they are not part of this product repo.
 python3 orchestrator/moira_api.py --repo /path/to/ai-sdlc-repo   # API on :8765
 npm --prefix cockpit run dev                                     # UI on :5173 (proxies /api)
 ./run-desktop.sh                 # native desktop shell (needs cargo + webkit2gtk)
+
+# optional external durable runner (disable embedded runner in the API first):
+MOIRA_RUNNER_MODE=external python3 orchestrator/moira_api.py --repo /path/to/ai-sdlc-repo
+python3 orchestrator/moira_runner.py --db .moira/moira.sqlite
 ```
 
 ## Tests & build (run before opening a PR)
@@ -92,8 +96,10 @@ commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Watch the **Actions** t
 ## Debugging / logs
 
 Runs launch **non-blocking**: `POST /api/runs`, `/api/discovery`, and gate approve/reject return a
-`run_id` immediately and drive the pipeline on a background thread — the cockpit then streams progress
-(Runs/Inbox poll every ~2.5 s). So a real `claude` step no longer freezes the "Start"/decision button.
+`run_id` immediately and enqueue a durable runner job. In local/desktop mode the sidecar starts an
+embedded runner thread, but the source of truth is the persisted job/lease state, not request-thread
+memory. The cockpit then streams progress (Runs/Inbox poll every ~2.5 s), so a real `claude` step no
+longer freezes the "Start"/decision button.
 
 Where to look when something misbehaves:
 - **Live, per run:** open **Runs**, select the run → execution plan (per-node status) + a streaming
@@ -101,6 +107,8 @@ Where to look when something misbehaves:
   stderr or timeout).
 - **Across runs:** the **Activity** page → **Events** tab (all runs) and **Sidecar logs** tab (the
   orchestrator logfile, tailed live).
+- **Runner health:** `GET /api/health` includes runner mode, worker heartbeat, and job counts; `GET
+  /api/runner` returns recent jobs and workers for durable-runner debugging.
 - **Logfile on disk:** `MOIRA_LOG` (default next to `MOIRA_DB` → `<app-data>/moira.log` in the desktop
   app; the path is also in `GET /api/health` and `GET /api/logs?tail=N`).
 - **Dev:** run `./run-cockpit.sh` (or `python3 orchestrator/moira_api.py …`) in a terminal — the sidecar

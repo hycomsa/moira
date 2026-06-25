@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from moira_core import (  # noqa: E402
     AISdlcRepo, BackendRegistry, Engine, GateConfig, GateDecision, GateMode,
     MockBackend, Node, NodeType, Pipeline, Store, available_pipelines, client_gated_pipeline,
-    default_sdlc_pipeline, make_run_store,
+    default_sdlc_pipeline, make_run_store, DurableRunner, Event, new_id,
 )
 from moira_core.gates import simulate_routing  # noqa: E402
 from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
@@ -43,6 +43,8 @@ REPO = None
 STATIC = None
 LOG_PATH = None
 log = logging.getLogger("moira")
+RUNNER_THREAD = None
+RUNNER = None
 # how many times to retry a discovery skill node before escalating to a human gate
 # (1 = 2 attempts). With the short skill timeout this bounds the "stuck" window.
 try:
@@ -94,24 +96,55 @@ def background(owner: str, run_id: str, fn) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+def ensure_embedded_runner() -> None:
+    """Start the local durable runner once.
+
+    This replaces product use of request-scoped daemon execution: the thread is
+    now only a host for ADR-006 jobs/leases, not the source of truth.
+    """
+    global RUNNER_THREAD, RUNNER
+    mode = os.environ.get("MOIRA_RUNNER_MODE", "embedded").lower()
+    if mode in ("off", "external"):
+        return
+    if RUNNER_THREAD and RUNNER_THREAD.is_alive():
+        return
+    lease = int(os.environ.get("MOIRA_RUNNER_LEASE_SECONDS", "300"))
+    RUNNER = DurableRunner(open_store, registry, mode="embedded", lease_seconds=lease)
+    RUNNER_THREAD = threading.Thread(target=RUNNER.run_forever, daemon=True, name="moira-runner")
+    RUNNER_THREAD.start()
+    log.info("embedded durable runner started: %s", RUNNER.worker_id)
+
+
 def recover_orphans() -> None:
-    """On startup, any run still 'running' is an orphan from a previous process
-    (background drive threads don't survive a restart) → mark it failed so it
-    doesn't sit stuck 'running' forever."""
+    """Recover durable runner leases from a previous process.
+
+    ADR-006 replaces the old "mark every running run failed" behavior: the job
+    table is now the execution source of truth, so startup only releases expired
+    leases and lets queued work be claimed again.
+    """
     store = open_store()
     try:
-        from moira_core.models import Event
-        n = 0
-        for r in store.list_runs():
-            if r["status"] == "running":
-                store.update_run_status(r["run_id"], "failed")
-                store.append_event(Event(run_id=r["run_id"], kind="run.end",
-                                         message="Run interrupted (sidecar restarted)"))
-                n += 1
+        n = store.release_expired_leases()
         if n:
-            log.info("recovered %d orphaned running run(s) -> failed", n)
+            log.info("released %d expired runner lease(s)", n)
     finally:
         store.close()
+
+
+def enqueue_run_job(store, run_id: str, ws_id: str, kind: str, payload: dict) -> dict:
+    job = store.enqueue_job({
+        "job_id": new_id("job-"),
+        "run_id": run_id,
+        "workspace_id": ws_id,
+        "kind": kind,
+        "status": "queued",
+        "payload": payload,
+        "max_attempts": int(os.environ.get("MOIRA_JOB_MAX_ATTEMPTS", "3")),
+    })
+    store.append_event(Event(run_id=run_id, kind="job.queued",
+                             message=f"Queued durable job {job['job_id']} ({kind})"))
+    ensure_embedded_runner()
+    return job
 
 
 def live_path_for(run_id: str) -> str | None:
@@ -557,9 +590,17 @@ class Handler(BaseHTTPRequestHandler):
                 git_on = os.environ.get("MOIRA_GIT_EXPORT", "0") not in ("", "0", "false", "False")
                 persistence = primary + (" + git" if git_on else "")
                 cc = ClaudeCodeBackend()
+                workers = store.workers()
+                jobs = store.jobs()
+                by_job_status = {}
+                for j in jobs:
+                    by_job_status[j["status"]] = by_job_status.get(j["status"], 0) + 1
                 return self._send(200, {"ok": True, "backends": registry().available(),
                                         "repo": REPO, "persistence": persistence, "log": LOG_PATH,
                                         "claude": cc.available(), "version": "0.1",
+                                        "runner": {"mode": os.environ.get("MOIRA_RUNNER_MODE", "embedded"),
+                                                   "embedded_alive": bool(RUNNER_THREAD and RUNNER_THREAD.is_alive()),
+                                                   "workers": workers, "jobs": by_job_status},
                                         "config": {"skill_timeout": cc.skill_timeout, "skill_max_turns": cc.skill_max_turns,
                                                    "skill_retries": SKILL_RETRIES, "claude_timeout": cc.timeout,
                                                    "heavy_timeout": cc.heavy_timeout,
@@ -693,6 +734,13 @@ class Handler(BaseHTTPRequestHandler):
                         events.append({**e, "run_id": r["run_id"]})
                 events.sort(key=lambda e: e["ts"], reverse=True)
                 return self._send(200, {"activity": events[:100]})
+            if path == "/api/runner":
+                jobs = store.jobs()
+                by = {}
+                for j in jobs:
+                    by[j["status"]] = by.get(j["status"], 0) + 1
+                return self._send(200, {"workers": store.workers(), "jobs": jobs[-100:],
+                                        "job_counts": by})
             if path.startswith("/api/runs/") and path.endswith("/verify"):
                 from moira_core.integrity import verify_chain
                 run_id = path[len("/api/runs/"):-len("/verify")]
@@ -904,8 +952,9 @@ class Handler(BaseHTTPRequestHandler):
                 ctx["live_path"] = live_path_for(run_id)
                 log.info("launch run %s func=%s pipeline=%s backend=%s owner=%s",
                          run_id, func_id, pipe.id, body.get("backend", "mock"), owner)
-                background(owner, run_id, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
-                return self._send(201, {"run_id": run_id, "status": "running", "waiting_node": None})
+                job = enqueue_run_job(store, run_id, ws_id, "drive_run", {"context": ctx})
+                return self._send(201, {"run_id": run_id, "status": "queued",
+                                        "job_id": job["job_id"], "waiting_node": None})
             if path.startswith("/api/runs/") and path.endswith("/report"):
                 from moira_core.report import render_run_report
                 from moira_core.git_sink import GitExportSink
@@ -990,6 +1039,19 @@ class Handler(BaseHTTPRequestHandler):
                 scorecard = normalize_scorecard((rec or {}).get("output", {}), kind)
                 return self._send(201, {"run_id": res.run_id, "status": res.status.value,
                                         "kind": kind, "scorecard": scorecard})
+            if path.startswith("/api/runs/") and path.endswith("/cancel"):
+                run_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
+                run = store.get_run(run_id)
+                if not run:
+                    return self._send(404, {"error": "not found"})
+                by = body.get("by", "human")
+                reason = body.get("reason", "cancelled via cockpit")
+                store.request_cancellation(run_id, by, reason)
+                store.append_event(Event(run_id=run_id, kind="run.cancel.requested",
+                                         message=f"Cancellation requested by {by}: {reason}"))
+                ensure_embedded_runner()
+                return self._send(200, {"run_id": run_id, "status": run.get("status"),
+                                        "cancellation_requested": True})
             if path == "/api/discovery":
                 # Drive AI SDLC framework skill(s) to author/refine artifacts in the
                 # AI SDLC repo (cwd=repo_path), each gated by a human review. Accepts
@@ -1039,8 +1101,9 @@ class Handler(BaseHTTPRequestHandler):
                 ctx["live_path"] = live_path_for(run_id)
                 log.info("launch discovery %s steps=%s owner=%s",
                          run_id, [s["skill"] for s in steps], owner)
-                background(owner, run_id, lambda e, p=pipe, c=ctx, r=run_id: e.drive_existing(r, p, c))
-                return self._send(201, {"run_id": run_id, "status": "running", "waiting_node": None})
+                job = enqueue_run_job(store, run_id, ws_id, "drive_run", {"context": ctx})
+                return self._send(201, {"run_id": run_id, "status": "queued",
+                                        "job_id": job["job_id"], "waiting_node": None})
             if path.endswith("/approve") or path.endswith("/reject"):
                 run_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
                 run = store.get_run(run_id)
@@ -1070,8 +1133,11 @@ class Handler(BaseHTTPRequestHandler):
                 if code:
                     ctx["cwd"] = code
                 log.info("gate %s %s by %s", run_id, dec.decision, dec.by)
-                background(run["owner"], run_id, lambda e, p=pipe, c=ctx, d=dec, r=run_id: e.resume(r, p, c, d))
-                return self._send(200, {"run_id": run_id, "status": "running", "waiting_node": None})
+                store.update_run_status(run_id, "running")
+                job = enqueue_run_job(store, run_id, run_ws, "resume_run",
+                                      {"context": ctx, "decision": dec.to_dict()})
+                return self._send(200, {"run_id": run_id, "status": "queued",
+                                        "job_id": job["job_id"], "waiting_node": None})
             if path.endswith("/rerun"):
                 old_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
                 run = store.get_run(old_id)
@@ -1097,8 +1163,9 @@ class Handler(BaseHTTPRequestHandler):
                 new_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=run_ws)
                 ctx["live_path"] = live_path_for(new_id)
                 log.info("rerun %s -> new run %s", old_id, new_id)
-                background(owner, new_id, lambda e, p=pipe, c=ctx, r=new_id: e.drive_existing(r, p, c))
-                return self._send(201, {"run_id": new_id, "status": "running", "waiting_node": None})
+                job = enqueue_run_job(store, new_id, run_ws, "drive_run", {"context": ctx})
+                return self._send(201, {"run_id": new_id, "status": "queued",
+                                        "job_id": job["job_id"], "waiting_node": None})
             if path == "/api/gate/simulate":
                 cfg = GateConfig(mode=GateMode.HYBRID,
                                  high_cutoff=float(body.get("high_cutoff", 0.85)),
@@ -1136,6 +1203,7 @@ def main(argv=None) -> int:
     STATIC = args.static
     setup_logging()
     recover_orphans()
+    ensure_embedded_runner()
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     log.info("Moira API on http://127.0.0.1:%s  repo=%s  static=%s  log=%s",
              args.port, REPO, STATIC, LOG_PATH)
