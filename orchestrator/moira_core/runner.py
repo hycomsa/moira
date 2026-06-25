@@ -7,8 +7,10 @@ the primary store. Embedded and external runners should use this same contract.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
+import threading
 import time
 import traceback
 from typing import Callable
@@ -18,6 +20,7 @@ from .engine import Engine
 from .models import Event, GateDecision, Pipeline, Status
 from .persistence import RunStore
 
+log = logging.getLogger("moira.runner")
 
 StoreFactory = Callable[[], RunStore]
 RegistryFactory = Callable[[], BackendRegistry]
@@ -55,7 +58,11 @@ class DurableRunner:
             if not job:
                 store.heartbeat_worker(self.worker_id, None)
                 return False
-            store.mark_job_running(job["job_id"], self.worker_id)
+            if not store.mark_job_running(job["job_id"], self.worker_id):
+                # Lease was lost between claim and start (another worker reclaimed an
+                # expired lease) — don't execute a job we no longer own.
+                log.warning("lost lease for job %s before start; skipping", job["job_id"])
+                return True
             store.heartbeat_worker(self.worker_id, job["job_id"])
             self._execute_job(store, job)
             return True
@@ -94,19 +101,36 @@ class DurableRunner:
             context = payload.get("context") or {}
             engine = Engine(store, self.registry_factory(), owner=run.get("owner", "unknown"))
 
-            if job["kind"] == "drive_run":
-                result = engine.drive_existing(run_id, pipeline, context)
-            elif job["kind"] == "resume_run":
-                decision_data = payload.get("decision") or {}
-                decision = GateDecision(**decision_data)
-                result = engine.resume(run_id, pipeline, context, decision)
-            else:
-                store.complete_job(job["job_id"], self.worker_id, "failed",
-                                   f"unknown job kind: {job['kind']}")
-                return
+            # Keep the lease alive while the (potentially long) engine drive runs, so a
+            # second worker never steals and double-executes this run (ADR-006:110). The
+            # heartbeat uses its OWN store connection on a daemon thread — store writes
+            # from the engine stay on this thread.
+            stop_heartbeat = threading.Event()
+            hb = threading.Thread(target=self._heartbeat_loop, args=(job["job_id"], stop_heartbeat),
+                                  daemon=True, name=f"hb-{job['job_id']}")
+            hb.start()
+            try:
+                if job["kind"] == "drive_run":
+                    result = engine.drive_existing(run_id, pipeline, context)
+                elif job["kind"] == "resume_run":
+                    decision_data = payload.get("decision") or {}
+                    decision = GateDecision(**decision_data)
+                    result = engine.resume(run_id, pipeline, context, decision)
+                else:
+                    store.complete_job(job["job_id"], self.worker_id, "failed",
+                                       f"unknown job kind: {job['kind']}")
+                    return
+            finally:
+                stop_heartbeat.set()
+                hb.join(timeout=2)
 
             status = result.status.value
-            store.complete_job(job["job_id"], self.worker_id, status)
+            if not store.complete_job(job["job_id"], self.worker_id, status):
+                # 0 rows updated => our lease was stolen mid-run despite heartbeat (e.g. a
+                # DB stall longer than the lease). The current owner is authoritative; log
+                # loudly rather than silently believing we succeeded.
+                log.warning("lost lease for job %s during execution; completion not recorded "
+                            "(another worker owns it)", job["job_id"])
         except Exception as e:  # noqa: BLE001
             try:
                 store.update_run_status(run_id, Status.FAILED.value)
@@ -115,6 +139,23 @@ class DurableRunner:
             finally:
                 store.complete_job(job["job_id"], self.worker_id, "failed",
                                    f"{e}\n{traceback.format_exc()}"[:4000])
+
+    def _heartbeat_loop(self, job_id: str, stop: threading.Event) -> None:
+        """Renew the job lease on a timer until told to stop. Own store connection."""
+        interval = max(0.5, self.lease_seconds / 3.0)
+        store = self.store_factory()
+        try:
+            store.heartbeat_job(job_id, self.worker_id, self.lease_seconds)
+            while not stop.wait(interval):
+                try:
+                    store.heartbeat_job(job_id, self.worker_id, self.lease_seconds)
+                except Exception:  # noqa: BLE001 — a transient DB hiccup must not kill the thread
+                    pass
+        finally:
+            try:
+                store.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _cancel_run(self, store: RunStore, job: dict) -> None:
         run_id = job["run_id"]

@@ -35,6 +35,15 @@ def main(argv=None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    # External runners are for team/self-hosted deployments where several processes
+    # share ONE primary store. SQLite is not safe as that shared store across
+    # processes/hosts — team mode requires Postgres (ADR-005/ADR-006).
+    primary = os.environ.get("MOIRA_PRIMARY", "sqlite").lower()
+    if args.mode == "external" and primary != "postgres":
+        parser.error("--mode external requires a shared Postgres primary "
+                     "(set MOIRA_PRIMARY=postgres and MOIRA_PG_DSN); SQLite is not safe "
+                     "for multi-process execution. Use --mode embedded for single-process/desktop.")
+
     def open_store():
         return make_run_store(args.db)
 

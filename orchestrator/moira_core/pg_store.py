@@ -274,30 +274,33 @@ class PostgresRunStore:
         ).fetchone()
         return self._decode_job(row)
 
-    def mark_job_running(self, job_id: str, worker_id: str) -> None:
+    def mark_job_running(self, job_id: str, worker_id: str) -> int:
         now = time.time()
-        self.conn.execute(
+        cur = self.conn.execute(
             "UPDATE jobs SET status='running', started_at=COALESCE(started_at, %s),"
             " updated_at=%s WHERE job_id=%s AND lease_owner=%s",
             (now, now, job_id, worker_id),
         )
+        return cur.rowcount
 
-    def heartbeat_job(self, job_id: str, worker_id: str, lease_seconds: int = 300) -> None:
+    def heartbeat_job(self, job_id: str, worker_id: str, lease_seconds: int = 300) -> int:
         now = time.time()
-        self.conn.execute(
+        cur = self.conn.execute(
             "UPDATE jobs SET lease_until=%s, updated_at=%s WHERE job_id=%s AND lease_owner=%s"
             " AND status IN ('leased','running')",
             (now + lease_seconds, now, job_id, worker_id),
         )
+        return cur.rowcount
 
     def complete_job(self, job_id: str, worker_id: str, status: str,
-                     error: str | None = None) -> None:
+                     error: str | None = None) -> int:
         now = time.time()
-        self.conn.execute(
+        cur = self.conn.execute(
             "UPDATE jobs SET status=%s, finished_at=%s, updated_at=%s, last_error=%s,"
             " lease_owner=NULL, lease_until=NULL WHERE job_id=%s AND lease_owner=%s",
             (status, now, now, error, job_id, worker_id),
         )
+        return cur.rowcount
 
     def release_expired_leases(self, now: float | None = None) -> int:
         now = now or time.time()

@@ -22,7 +22,6 @@ import logging
 import os
 import sys
 import threading
-import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -71,29 +70,6 @@ def setup_logging() -> None:
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
     log.addHandler(sh)
-
-
-def background(owner: str, run_id: str, fn) -> None:
-    """Drive a run OFF the request thread so the HTTP call returns immediately
-    (the cockpit then polls). The thread uses its OWN Store + Engine (SQLite is
-    per-thread). A crash marks the run failed (not stuck 'running') and is logged."""
-    def _run():
-        store = open_store()
-        try:
-            res = fn(Engine(store, registry(), owner=owner))
-            log.info("run %s -> %s", run_id, getattr(getattr(res, "status", None), "value", res))
-        except Exception:  # noqa: BLE001
-            log.error("background run %s failed:\n%s", run_id, traceback.format_exc())
-            try:
-                from moira_core.models import Event
-                store.update_run_status(run_id, "failed")
-                store.append_event(Event(run_id=run_id, kind="run.end",
-                                         message="Run failed (background error) — see Activity → Sidecar logs"))
-            except Exception:  # noqa: BLE001
-                pass
-        finally:
-            store.close()
-    threading.Thread(target=_run, daemon=True).start()
 
 
 def ensure_embedded_runner() -> None:
