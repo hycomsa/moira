@@ -18,6 +18,38 @@ jobs:
       - name: Run unit tests
         run: python3 -m unittest discover -s orchestrator/tests -v
 
+  orchestrator-postgres:
+    name: orchestrator (postgres backend)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: moira
+          POSTGRES_PASSWORD: moira
+          POSTGRES_DB: moira
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Postgres is the only path that needs a driver (lazy-imported in pg_store).
+      - name: Install psycopg
+        run: pip install "psycopg[binary]"
+      # MOIRA_PG_DSN un-skips the live Postgres conformance + durable-runner tests
+      # (lease claim under SELECT … FOR UPDATE SKIP LOCKED, rowcount semantics).
+      - name: Run tests against Postgres
+        env:
+          MOIRA_PG_DSN: postgresql://moira:moira@localhost:5432/moira
+        run: python3 -m unittest discover -s orchestrator/tests -v
+
   cockpit:
     name: cockpit (type-check + build)
     runs-on: ubuntu-latest
@@ -32,3 +64,28 @@ jobs:
         run: npm ci --prefix cockpit
       - name: Build (tsc + vite)
         run: npm run build --prefix cockpit
+
+  tauri:
+    name: tauri (cargo check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+      # Tauri v2 on Linux needs the webkit2gtk-4.1 stack to compile the shell crate.
+      - name: System deps (Tauri v2 / Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --locked

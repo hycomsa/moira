@@ -8,6 +8,7 @@ Run against a local docker Postgres:
 """
 import os
 import sys
+import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +31,12 @@ class TestPostgresRunStore(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.store.close()
+
+    def setUp(self):
+        # isolate durable-job tests from one another (shared class connection;
+        # release_expired_leases is global, so leftover jobs would cross-contaminate)
+        for t in ("cancellations", "workers", "jobs"):
+            self.store.conn.execute(f"DELETE FROM {t} WHERE TRUE")
 
     def test_run_lifecycle_roundtrip(self):
         s = self.store
@@ -64,6 +71,51 @@ class TestPostgresRunStore(unittest.TestCase):
         self.assertEqual(len(recs), 1)
         self.assertEqual(recs[0]["status"], "failed")
         self.assertAlmostEqual(s.run_cost("run-pg-3")["usd"], 0.02)
+
+
+    def test_durable_job_lifecycle_and_lost_lease(self):
+        """Durable-runner job semantics on Postgres: claim → mark_running (rowcount) →
+        complete (rowcount); a stolen lease makes the loser's complete report 0 rows."""
+        s = self.store
+        s.create_run("run-pg-job", "p", {"id": "p", "name": "P", "nodes": []}, "o", "running")
+        s.enqueue_job({"job_id": "pgjob-1", "run_id": "run-pg-job", "kind": "drive_run"})
+
+        job = s.claim_next_job("w1", [], lease_seconds=30)
+        self.assertEqual(job["job_id"], "pgjob-1")
+        self.assertEqual(job["attempt"], 1)
+        self.assertEqual(s.mark_job_running("pgjob-1", "w1"), 1)
+
+        # steal: expire + reclaim by w2
+        s.release_expired_leases(now=job["lease_until"] + 1)
+        self.assertIsNotNone(s.claim_next_job("w2", [], lease_seconds=30))
+        self.assertEqual(s.complete_job("pgjob-1", "w1", "succeeded"), 0)  # loser
+        self.assertEqual(s.complete_job("pgjob-1", "w2", "succeeded"), 1)  # owner
+
+    def test_concurrent_claim_is_exclusive(self):
+        """SELECT … FOR UPDATE SKIP LOCKED: two runners racing for one job — exactly one wins."""
+        from moira_core.pg_store import PostgresRunStore
+        s = self.store
+        s.create_run("run-pg-race", "p", {"id": "p", "name": "P", "nodes": []}, "o", "running")
+        s.enqueue_job({"job_id": "pgjob-race", "run_id": "run-pg-race", "kind": "drive_run"})
+
+        results, barrier = {}, threading.Barrier(2)
+
+        def claim(worker):
+            store = PostgresRunStore(DSN)
+            try:
+                barrier.wait(timeout=5)
+                results[worker] = store.claim_next_job(worker, [], lease_seconds=30)
+            finally:
+                store.close()
+
+        ts = [threading.Thread(target=claim, args=(f"w{i}",)) for i in range(2)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(timeout=5)
+
+        won = [w for w, j in results.items() if j is not None]
+        self.assertEqual(len(won), 1, f"exactly one worker must claim; got {results}")
 
 
 if __name__ == "__main__":

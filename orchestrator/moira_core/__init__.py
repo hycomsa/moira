@@ -11,6 +11,7 @@ from .pipelines import default_sdlc_pipeline, client_gated_pipeline, available_p
 from .persistence import RunStore, ExportSink, CompositeStore, make_run_store
 from .git_sink import GitExportSink
 from .runner import DurableRunner
+from .validation import validate_pipeline
 
 __version__ = "0.1.0"
 
@@ -22,5 +23,5 @@ __all__ = [
     "BackendRegistry", "MockBackend", "ClaudeCodeBackend", "LiteLLMBackend",
     "default_sdlc_pipeline", "client_gated_pipeline", "available_pipelines",
     "RunStore", "ExportSink", "CompositeStore", "make_run_store", "GitExportSink",
-    "DurableRunner",
+    "DurableRunner", "validate_pipeline",
 ]

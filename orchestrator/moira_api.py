@@ -32,6 +32,7 @@ from moira_core import (  # noqa: E402
     AISdlcRepo, BackendRegistry, Engine, GateConfig, GateDecision, GateMode,
     MockBackend, Node, NodeType, Pipeline, Store, available_pipelines, client_gated_pipeline,
     default_sdlc_pipeline, make_run_store, DurableRunner, Event, new_id,
+    validate_pipeline,
 )
 from moira_core.gates import simulate_routing  # noqa: E402
 from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
@@ -904,13 +905,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(201, saved)
             if path == "/api/pipelines":
                 ws_id = body.get("workspace_id", "default")
-                saved = AISdlcRepo(ws_repo(store, ws_id)).save_pipeline_def(body)
+                repo = AISdlcRepo(ws_repo(store, ws_id))
+                # schema-validate before persisting: build the def (resolves agent refs)
+                # then check structure, so a malformed pipeline never reaches a run.
+                try:
+                    built = repo.build_pipeline(body)
+                except Exception as e:  # noqa: BLE001 — build failure == invalid def
+                    return self._send(400, {"error": "invalid pipeline", "detail": str(e)})
+                errs = validate_pipeline(built)
+                if errs:
+                    return self._send(400, {"error": "invalid pipeline", "errors": errs})
+                saved = repo.save_pipeline_def(body)
                 return self._send(201, saved)
             if path == "/api/runs":
                 func_id = body.get("func_id", "FUNC-DEMO")
                 owner = body.get("owner", "tomasz.skonieczny")
                 ws_id = body.get("workspace_id", "default")
                 pipe = load_pipeline(store, ws_id, body, func_id)
+                errs = validate_pipeline(pipe)
+                if errs:
+                    return self._send(400, {"error": "invalid pipeline", "errors": errs})
                 rp = ws_repo(store, ws_id)
                 ctx = context_for(func_id, rp)
                 code = ws_code_path(store, ws_id)  # real coding: agents write here (cwd)

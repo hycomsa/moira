@@ -64,7 +64,12 @@ class DurableRunner:
                 log.warning("lost lease for job %s before start; skipping", job["job_id"])
                 return True
             store.heartbeat_worker(self.worker_id, job["job_id"])
+            log.info("job.claim worker=%s job=%s run=%s kind=%s attempt=%s",
+                     self.worker_id, job["job_id"], job["run_id"], job["kind"], job.get("attempt"))
+            started = time.time()
             self._execute_job(store, job)
+            log.info("job.complete worker=%s job=%s run=%s dur=%.2fs",
+                     self.worker_id, job["job_id"], job["run_id"], time.time() - started)
             return True
         finally:
             try:

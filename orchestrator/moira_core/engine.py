@@ -18,6 +18,7 @@ This supersedes LangGraph for now (ADR-002): it delivers arbitrary DAG + paralle
 """
 from __future__ import annotations
 
+import logging
 import shlex
 import subprocess
 import time
@@ -33,6 +34,8 @@ from .models import (
 from . import gitdiff
 from .persistence import RunStore
 from .store import Store  # noqa: F401 — re-exported for back-compat
+
+log = logging.getLogger("moira.engine")
 
 MAX_PARALLEL = 8
 PENDING, RUNNING, DONE, WAITING, REJECTED, FAILED = (
@@ -165,6 +168,8 @@ class Engine:
                         self.store.update_run_status(run_id, Status.WAITING_GATE.value)
                         self._event(run_id, "node.escalate",
                                     f"[{n.name}] failed after retries — escalated to human", n.id)
+                        log.warning("node.escalate run=%s node=%s backend=%s — exhausted retries",
+                                    run_id, n.id, n.backend)
                         return RunResult(run_id, Status.WAITING_GATE, waiting_node=n.id)
                     res = ex["result"]
                     upstream[n.id] = res.output
@@ -376,6 +381,8 @@ class Engine:
         # node.start is emitted by the drive loop BEFORE execution (live progress)
         for err in ex["errors"]:
             self._event(run_id, "retry", f"[{node.name}] failed: {err}", node.id)
+            log.warning("node.retry run=%s node=%s backend=%s err=%s",
+                        run_id, node.id, node.backend, err)
         res = ex["result"]
         rec = AuditRecord(
             step_id=new_id("step-"), run_id=run_id, node_id=node.id, node_name=node.name,
@@ -392,6 +399,9 @@ class Engine:
             status=DONE if res else FAILED,
         )
         self.store.save_audit(rec)
+        cost_usd = rec.cost.get("usd", 0.0) if isinstance(rec.cost, dict) else 0.0
+        log.info("node.end run=%s node=%s type=%s status=%s dur=%.2fs cost_usd=%.4f",
+                 run_id, node.id, node.type.value, rec.status, rec.duration, cost_usd)
         if res:
             self._event(run_id, "node.end",
                         f"[{node.name}] ok ({rec.cost.get('usd', 0):.3f} USD, {rec.duration:.2f}s)"
@@ -420,6 +430,8 @@ class Engine:
         )
         self.store.save_audit(rec)
         self._event(run_id, "gate.eval", f"[{node.name}] {decision.decision}: {decision.confirmed}", node.id)
+        log.info("gate.eval run=%s node=%s mode=%s decision=%s", run_id, node.id,
+                 cfg.mode.value, decision.decision)
         return decision
 
     def _finalize_gate(self, run_id: str, node: Node, decision: GateDecision) -> None:
