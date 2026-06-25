@@ -86,6 +86,40 @@ class TestGitSink(unittest.TestCase):
         self.assertNotIn("MY_WORK.txt", tracked)
         self.assertIn(".moira-runs/", tracked)
 
+    def _git_audit_records(self, run_id):
+        adir = Path(self.repo, ".moira-runs", run_id, "audit")
+        return [json.loads(f.read_text("utf-8")) for f in adir.glob("*.json")]
+
+    def test_git_audit_files_are_sealed_and_verify(self):
+        """The git mirror must carry the SAME sealed evidence as the primary —
+        every exported audit record has prev_hash + hash and the chain verifies
+        (the 'git-native tamper-evident audit' claim must hold for the artifact a
+        reviewer actually opens). ADR-005 / must-fix #4."""
+        res = self._run()
+        from moira_core.integrity import verify_chain, verify_export
+        git_recs = self._git_audit_records(res.run_id)
+        self.assertTrue(git_recs)
+        for r in git_recs:
+            self.assertIn("prev_hash", r)
+            self.assertIn("hash", r)
+        # the mirror verifies standalone (order reconstructed from prev_hash links)
+        gv = verify_export(git_recs)
+        self.assertTrue(gv["ok"], gv)
+        self.assertTrue(gv["sealed"])
+        # and AGREES with the primary store's chain head
+        pv = verify_chain(self.store.audit_records(res.run_id))
+        self.assertEqual(gv["head"], pv["head"])
+
+    def test_tampered_git_audit_record_is_detected(self):
+        res = self._run()
+        from moira_core.integrity import verify_export
+        adir = Path(self.repo, ".moira-runs", res.run_id, "audit")
+        victim = sorted(adir.glob("*.json"))[0]
+        rec = json.loads(victim.read_text("utf-8"))
+        rec["owner"] = "attacker"  # silent edit, hash left unchanged
+        victim.write_text(json.dumps(rec), "utf-8")
+        self.assertFalse(verify_export(self._git_audit_records(res.run_id))["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

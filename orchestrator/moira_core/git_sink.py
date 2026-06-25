@@ -123,16 +123,20 @@ class GitExportSink(ExportSink):
             fh.write(json.dumps(asdict(ev), ensure_ascii=False) + "\n")
         # no commit — swept into the next transition commit
 
-    def on_audit(self, rec: AuditRecord) -> None:
+    def on_audit(self, rec: AuditRecord, sealed: dict | None = None) -> None:
         repo = self._repo(rec.run_id)
         if not repo:
             return
         d = self._run_dir(repo, rec.run_id)
         adir = d / "audit"
         adir.mkdir(exist_ok=True)
+        # write the SEALED record (prev_hash + hash) so the mirror carries the same
+        # tamper-evidence as the primary; fall back to the raw record only if a
+        # caller invoked the sink without a sealed body.
+        record = sealed if sealed is not None else rec.to_dict()
         # filename by step_id (mirrors the primary's overwrite-by-step semantics)
         (adir / f"{rec.step_id}.json").write_text(
-            json.dumps(rec.to_dict(), ensure_ascii=False, indent=2), "utf-8")
+            json.dumps(record, ensure_ascii=False, indent=2), "utf-8")
         # no commit — swept into the next transition commit
 
     def write_report(self, repo: str, run_id: str, markdown: str) -> str:

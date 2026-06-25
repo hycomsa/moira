@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from moira_core import Store  # noqa: E402
-from moira_core.integrity import seal, verify_chain, GENESIS  # noqa: E402
+from moira_core.integrity import seal, verify_chain, verify_export, GENESIS  # noqa: E402
 from moira_core.models import AuditRecord  # noqa: E402
 
 
@@ -41,6 +41,39 @@ class TestSealVerify(unittest.TestCase):
 
     def test_empty_chain_ok(self):
         self.assertTrue(verify_chain([])["ok"])
+
+
+class TestVerifyExport(unittest.TestCase):
+    """verify_export reconstructs chain order from prev_hash links (the git mirror
+    stores one unordered file per step)."""
+    def _chain(self, n):
+        recs, prev = [], GENESIS
+        for i in range(n):
+            r = seal({"step_id": f"s{i}", "node_id": f"n{i}", "owner": "o", "status": "succeeded"}, prev)
+            recs.append(r); prev = r["hash"]
+        return recs
+
+    def test_shuffled_export_still_verifies(self):
+        recs = self._chain(5)
+        shuffled = [recs[3], recs[0], recs[4], recs[1], recs[2]]  # filesystem glob order
+        v = verify_export(shuffled)
+        self.assertTrue(v["ok"], v)
+        self.assertEqual(v["length"], 5)
+        self.assertEqual(v["head"], verify_chain(recs)["head"])  # agrees with ordered chain
+
+    def test_tampered_export_detected(self):
+        recs = self._chain(5)
+        recs[2]["owner"] = "attacker"  # hash now stale -> next link won't thread
+        self.assertFalse(verify_export(recs)["ok"])
+
+    def test_dropped_export_record_detected(self):
+        recs = self._chain(5)
+        del recs[2]
+        self.assertFalse(verify_export(recs)["ok"])
+
+    def test_empty_and_unsealed(self):
+        self.assertTrue(verify_export([])["ok"])
+        self.assertFalse(verify_export([{"step_id": "x"}])["sealed"])  # legacy/no hash
 
 
 class TestStoreChain(unittest.TestCase):

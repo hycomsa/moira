@@ -43,3 +43,35 @@ def verify_chain(records: list[dict[str, Any]]) -> dict[str, Any]:
             return {"ok": False, "sealed": True, "length": len(records), "broken_at": i, "head": prev}
         prev = r["hash"]
     return {"ok": True, "sealed": True, "length": len(records), "broken_at": None, "head": prev}
+
+
+def verify_export(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Verify an UNORDERED set of exported records (the git mirror stores one file
+    per step with no inherent order). Order is reconstructed by following prev_hash
+    links from GENESIS, then `verify_chain` re-derives every hash.
+
+    A silent edit changes a record's recomputed hash, so the next record's
+    `prev_hash` no longer links — reconstruction stalls and the result is not ok.
+    """
+    if not records:
+        return {"ok": True, "sealed": False, "length": 0, "broken_at": None, "head": ""}
+    if not any(r.get("hash") for r in records):
+        return {"ok": True, "sealed": False, "length": len(records), "broken_at": None, "head": ""}
+    by_prev: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        by_prev.setdefault(r.get("prev_hash", ""), []).append(r)
+    ordered: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    prev = GENESIS
+    while prev in by_prev and len(ordered) < len(records):
+        cand = by_prev[prev][0]
+        if cand.get("hash") in seen:  # cycle / fork guard
+            break
+        ordered.append(cand)
+        seen.add(cand.get("hash"))
+        prev = cand.get("hash", "")
+    if len(ordered) != len(records):
+        # couldn't thread every record onto a single chain from GENESIS => tampered
+        return {"ok": False, "sealed": True, "length": len(records),
+                "broken_at": len(ordered), "head": prev}
+    return verify_chain(ordered)

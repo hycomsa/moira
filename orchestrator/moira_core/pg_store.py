@@ -184,7 +184,7 @@ class PostgresRunStore:
             (run_id,)).fetchall())
 
     # ---- audit ------------------------------------------------------------ #
-    def save_audit(self, rec: AuditRecord) -> None:
+    def save_audit(self, rec: AuditRecord) -> dict[str, Any]:
         prev = self.conn.execute(
             "SELECT record FROM audit WHERE run_id=%s ORDER BY seq DESC LIMIT 1", (rec.run_id,)
         ).fetchone()
@@ -198,6 +198,7 @@ class PostgresRunStore:
             (rec.step_id, rec.run_id, rec.node_id, rec.node_name, rec.owner,
              rec.status, json.dumps(body), time.time()),
         )
+        return body  # sealed record — sinks export THIS, so the mirror carries the chain
 
     def audit_records(self, run_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(

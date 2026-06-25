@@ -109,8 +109,17 @@ When `MOIRA_GIT_EXPORT=1`, each run is mirrored into the workspace's AI SDLC rep
 - `psycopg` is the **only** new dependency, and it's optional — loaded lazily
   only when `MOIRA_PRIMARY=postgres`. The SQLite and git paths remain
   stdlib-only, consistent with the zero-dep core.
-- Tamper-evidence (hash-chaining audit rows) and a background commit worker are
-  noted as future work in `ADR-005` — not implemented yet.
+- **Tamper-evidence (implemented):** every audit record is sealed into a per-run
+  hash chain (`prev_hash` + `hash`, see `integrity.py`). The primary store and the
+  git mirror (`.moira-runs/<run>/audit/*.json`) carry the **same sealed record**,
+  so the reviewable git artifact is itself verifiable — `verify_chain` (ordered,
+  primary) and `verify_export` (order reconstructed from links, git mirror) detect
+  any silent edit, drop, or reorder. Exposed at `GET /api/runs/{id}/verify`; the
+  run report shows chain status, length, and head hash. This is **tamper-evident,
+  not signed** — it proves the log wasn't silently altered, not *who* wrote it.
+  Cryptographic signing of the chain head / terminal report (signer identity, key
+  id, rotation) is future enterprise work. A background commit worker is also
+  still future work.
 - Backup/retention: for Postgres use standard `pg_dump`; for the git mirror, the
   history *is* the backup (push the AI SDLC repo to your remote).
 ```

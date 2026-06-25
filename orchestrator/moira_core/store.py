@@ -208,7 +208,7 @@ class Store:
         return [dict(r) for r in rows]
 
     # ---- audit records ----------------------------------------------------- #
-    def save_audit(self, rec: AuditRecord) -> None:
+    def save_audit(self, rec: AuditRecord) -> dict[str, Any]:
         self._seq += 1
         # tamper-evidence: chain this record to the run's previous one (rowid =
         # true insertion order, stable across the per-instance _seq reset)
@@ -224,6 +224,7 @@ class Store:
              rec.status, json.dumps(body), self._seq, time.time()),
         )
         self.conn.commit()
+        return body  # sealed record — sinks export THIS, so the mirror carries the chain
 
     def audit_records(self, run_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
