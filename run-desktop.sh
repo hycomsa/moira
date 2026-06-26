@@ -35,6 +35,12 @@ fi
 say "Compiling Tauri desktop shell (first build pulls webkit deps — be patient)…"
 ( cd src-tauri && cargo build )
 
+# NOTE (auth): the desktop shell loads EMBEDDED assets, so the sidecar's index.html
+# token injection (used by the web cockpit) does NOT reach the Tauri webview. Desktop
+# therefore still runs with MOIRA_AUTH_MODE=off until the Tauri shell injects the
+# session token into the webview (Rust init script / IPC). Until then, do not export
+# MOIRA_AUTH_MODE=local here or the in-app API calls will 401.
+
 # ---- 3) launch ------------------------------------------------------------ #
 say "Launching Moira. The window opens and the Python sidecar starts on :8765."
 say "Close the window to quit (the sidecar is killed automatically)."

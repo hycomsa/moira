@@ -898,6 +898,22 @@ class Handler(BaseHTTPRequestHandler):
                  "css": "text/css", "json": "application/json",
                  "svg": "image/svg+xml"}.get(fp.suffix.lstrip("."), "application/octet-stream")
         data = fp.read_bytes()
+        # When auth is on, the server owns the session token: mint a short-lived local
+        # token for the local user and inject it + a fetch() wrapper that attaches it as
+        # a bearer header. The web cockpit then authenticates without any IdP or rebuild.
+        if ctype == "text/html" and authn.auth_mode() == "local":
+            token = authn.mint_local_token("local", ["admin"], ttl_seconds=43200)
+            inject = (
+                "<script>window.__MOIRA_TOKEN__=" + json.dumps(token) + ";"
+                "(function(){var t=window.__MOIRA_TOKEN__;if(!t)return;"
+                "var f=window.fetch.bind(window);window.fetch=function(i,o){o=o||{};"
+                "var h=new Headers((o&&o.headers)||(typeof i!=='string'&&i&&i.headers)||{});"
+                "if(!h.has('Authorization'))h.set('Authorization','Bearer '+t);"
+                "var n={};for(var k in o)n[k]=o[k];n.headers=h;return f(i,n);};})();</script>"
+            ).encode("utf-8")
+            lower = data.lower()
+            idx = lower.find(b"</head>")
+            data = (data[:idx] + inject + data[idx:]) if idx != -1 else inject + data
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))

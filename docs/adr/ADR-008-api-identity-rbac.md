@@ -1,7 +1,7 @@
 # ADR-008: API identity & RBAC
 
 **Date:** 2026-06-26
-**Status:** Accepted (backend MVP; frontend + live OIDC = phase 2)
+**Status:** Accepted (backend + web cockpit auth done; Tauri webview token + live OIDC pending)
 **Deciders:** Tomasz Skonieczny
 
 **Relates to:** operating-model.md (identity/RBAC design), must-fix #2; arms #3 (gates) and #5 (governance override).
@@ -49,14 +49,23 @@ enforcement wired in `moira_api.py` (feature-switched by mode); gate persona che
 approver; `/api/ready`. Tests: 25 unit (authz/authn) + 7 HTTP e2e (401/403/200, sensitive-read
 tiering, **gate persona enforced + body-spoof ignored**).
 
-## Deferred — phase 2 (needs running the app)
-- Cockpit `fetch` + Tauri must send the bearer token; then flip default `MOIRA_AUTH_MODE` to `local`.
+## Phase 2 — web cockpit auth ON (done, verified live)
+The sidecar, in `local` mode, mints a short-lived session token for the local user and **injects it
++ a `fetch` wrapper into the served `index.html`**, so the web cockpit authenticates with no IdP and
+no rebuild. `run-cockpit.sh` now defaults `MOIRA_AUTH_MODE=local`. Verified end-to-end against a live
+sidecar: `/api/ready` public; `/api/*` → 401 without token; injected token → 200; governance packs
+load. The library default stays `off` (tests/embedding unaffected).
+
+## Still deferred
+- **Tauri desktop:** loads EMBEDDED assets, so the index.html injection does NOT reach its webview —
+  desktop stays `off` until the Tauri shell injects the token into the webview (Rust init script/IPC).
+  `run-desktop.sh` documents this; do not flip it to `local` until then.
 - Tighten CORS to the known frontend origin (today still `*`; acceptable with header-bearer tokens —
   no cookies — but defense-in-depth).
 - Live OIDC against a real IdP; structured audit fields (`auth_source`, `persona_at_decision`) beyond
   the current `by`=subject + source-in-confirmed.
-- Enforce governance pack `override.requires_reason` / `allowed_personas` at an override endpoint
-  (today: persona authority via the gate is enforced; the dedicated override flow is phase 2).
+- Enforce governance pack `override.requires_reason` / `allowed_personas` at a dedicated override
+  endpoint (today: persona authority via the gate is enforced).
 
 ## Consequences
 - The quality gate and governance overrides become real, non-forgeable controls; audit records the
