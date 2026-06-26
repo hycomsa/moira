@@ -3,14 +3,22 @@
 Zero-dependency (stdlib http.server) on purpose, consistent with the core.
 Exposes the same operations as the CLI so the cockpit renders real run data:
 
-  GET  /api/health
-  GET  /api/runs
-  GET  /api/runs/{id}            -> {run, events, audit, cost}
-  GET  /api/inbox
-  POST /api/runs                 {func_id, repo?, owner?, analysis_gate?, impl_gate?}
-  POST /api/runs/{id}/approve    {by?, confirm?}
-  POST /api/runs/{id}/reject     {by?, feedback?}
+  GET  /api/ready                -> public readiness probe (no auth, no secrets)
+  GET  /api/health               -> backend/runner status (sensitive)
+  GET  /api/runs | /api/runs/{id}-> run list / {run, events, audit, cost}
+  GET  /api/inbox                -> gates awaiting a human
+  GET  /api/runs/{id}/verify     -> audit hash-chain verification
+  GET  /api/runner               -> durable runner: workers + recent jobs
+  GET  /api/governance/packs[/{id}] -> governance packs (repo-owned)
+  POST /api/runs                 {func_id, owner?, governance_packs?, ...}
+  POST /api/runs/{id}/approve    {confirm?}   (approver = authenticated principal)
+  POST /api/runs/{id}/reject     {feedback?}
+  POST /api/runs/{id}/cancel     -> request mid-drive cancellation
+  POST /api/eval                 -> quality/conformance/compliance scorecard
   GET  /                         -> serves the cockpit frontend (static dir)
+
+Auth (ADR-008): when MOIRA_AUTH_MODE != off, all /api/* except /api/ready require a
+Bearer JWT; default-deny RBAC (5 roles) authorizes each route + gate persona.
 
 Run:  python3 moira_api.py [--port 8765] [--repo ../../ai-sdlc] [--static ../cockpit/dist]
 """

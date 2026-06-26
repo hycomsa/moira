@@ -50,6 +50,18 @@ Activity · Settings**. Top-right: workspace switcher · Inbox badge · **profil
 > `MOIRA_GIT_EXPORT=1` for the git mirror, `MOIRA_PG_DSN=…`). Default is a local
 > SQLite file. See `orchestrator/PERSISTENCE.md`.
 
+### Authentication & RBAC
+
+Moira enforces **default-deny RBAC** when authentication is on (`MOIRA_AUTH_MODE`):
+
+| Mode | When | How identity is obtained |
+|---|---|---|
+| `off` | offline single-user; **desktop (`run-desktop.sh`) uses this** | every caller is treated as a local admin (no enforcement) |
+| `local` | **web cockpit (`run-cockpit.sh`) default** | the sidecar self-issues a session token and injects it into the served page — no IdP, no login |
+| `oidc` | team / enterprise | a real IdP issues the JWT (verified via JWKS); IdP groups → roles via `MOIRA_OIDC_GROUP_ROLES` |
+
+**Five roles** (separation of duties): **Admin** (everything), **Developer** (launch/edit + approve dev gates: `ba`,`lead-dev`,`architect`,`qa`), **Compliance** (approve `compliance`/`ciso` gates + governance overrides), **Client** (read + approve `client` gates), **Viewer** (read-only). A gate is approvable only by a role that covers its persona; the approver recorded in the audit is the **authenticated identity**, never a value the caller can type. `GET /api/ready` is always public.
+
 ## 3. The AI SDLC repo (the heart of Moira)
 
 Moira reads/writes a **git repo** that holds the "what & why & how-we-work" for a
@@ -72,8 +84,9 @@ Moira reads it live and writes artifacts/audit back to it (git-native).
   repo path**, and an optional **software repo path** (`code_path`, where coding
   agents write). A "Default" workspace exists out of the box.
 - **Profile menu** (avatar, top-right): set your **display name + persona/role** —
-  these become the **owner** of runs you start and the **approver (`by`)** on gates
-  you decide, recorded in the audit. Also: theme, default backend/model (prefill
+  this prefills the **owner** of runs you start. The **gate approver** recorded in
+  the audit comes from your **authenticated identity** (when auth is on), not a
+  free-text field — so an approval cannot be spoofed. Also: theme, default backend/model (prefill
   forms), your pending decisions, workspace paths & spend, system status, and a
   link to the **mobile companion**.
 
@@ -124,10 +137,25 @@ A modern node editor (your pipelines are YAML in the repo):
 - **Node Settings (right)** — agent, **per-node model + backend override**
   (cross-model wiring), retries, **per-node budget** (timeout / max-turns) for heavy steps;
   for gates: segmented **mode** (auto/hybrid/human/off) + persona + confidence sliders; for
-  auto-checks: a shell command **or** a built-in check (`ac_coverage`, `test_exec`).
+  auto-checks: a shell command **or** a built-in check (`ac_coverage`, `test_exec`, `log_hygiene`).
 - **Skill nodes** — a node can drive an AI SDLC **skill** (authoring), not just an agent. Authoring
   pipelines run against the AI SDLC repo; coding pipelines against the code repo.
 - **Run vs** picks the func-spec; **Save** writes the YAML; **▶ Run** launches it.
+- **Validation** — **Save** and **▶ Run** both validate the pipeline first: unknown
+  agents, an unknown built-in check, dangling edges / reject-targets, a gate with no
+  config, or a dependency cycle are rejected (`400`) — no silent failure mid-run.
+
+### Governance packs (compliance as enforceable controls)
+
+A **governance pack** is a versioned JSON policy bundle, project-owned in the AI SDLC
+repo under `.ai/standards/compliance/packs/` (samples ship in the repo: `gdpr-basic`,
+`wcag2.2`, `logs-advanced`). Attach packs to a run (`governance_packs: [id,…]`) and Moira
+compiles them onto the pipeline: **deterministic checks** (e.g. `log_hygiene` — sensitive
+data in logs = CRITICAL) that **block** the gate on HIGH/CRITICAL, plus an LLM review that
+is recorded as *qualitative, advisory* evidence, plus a governance **gate** (approvable
+only by the pack's persona — see RBAC). The applied pack `id@version` + content hash is
+**sealed into the audit**, and the run report shows a **policy-coverage table**
+(passed / failed / waived / N/A). Browse via `GET /api/governance/packs`.
 
 ## 8. Gates & the Inbox ("Pending decisions")
 
@@ -152,10 +180,14 @@ requirements, never code). Tune hybrid thresholds under **Settings**.
 ## 9. Audit, report & traceability
 
 - Every step writes an **audit record**: input · output · tools · decisions ·
-  approvals · cost · time · **owner** + lineage. The per-run audit is a
-  **tamper-evident hash chain** (🛡 verified / ⚠ broken).
+  approvals · cost · time · **owner/authenticated subject** + lineage. The per-run
+  audit is a **tamper-evident hash chain** (🛡 verified / ⚠ broken) — verify it via
+  `GET /api/runs/{id}/verify`. With `MOIRA_GIT_EXPORT=1` the **same sealed records**
+  are mirrored to `.moira-runs/<run>/audit/*.json`, so the git artifact a reviewer
+  opens carries the chain too (and a silent edit there is detected).
 - **⤓ Report** renders a run to git-native Markdown (committed into the repo's
-  `.moira-runs/`), incl. the audit chain status and file diffs.
+  `.moira-runs/`), incl. the audit chain status (length + head hash), any
+  **governance policy-coverage table**, and file diffs.
 - **Traceability** — every func-spec ↔ its lineage (INT/REQ/ADR) ↔ the runs that
   targeted it, as a **List** or a **Graph**; click an artifact to read it. The
   **provenance orbit** (also in artifact views and run pre-flight) shows where an
@@ -176,8 +208,15 @@ requirements, never code). Tune hybrid thresholds under **Settings**.
 
 ## 11. Mobile companion
 
-Open **`http://<desktop-ip>:8765/m`** on your phone (same network): a lightweight
-**gate inbox** — review the checks/diff and **Approve / Reject** on the go.
+`/m` is a lightweight **gate inbox** — review the checks/diff and **Approve / Reject**.
+Open it at **`http://127.0.0.1:8765/m`** on the machine running Moira.
+
+> **Cross-device/phone access is not available yet.** The sidecar binds `127.0.0.1`
+> (loopback) only, so `http://<desktop-ip>:8765/m` is unreachable from a phone today.
+> LAN/mobile access needs an explicit bind address **and** real identity
+> (`MOIRA_AUTH_MODE=oidc`) — tracked as future work (ADR-008). Auto-handing a session
+> token to any device on the network would defeat the auth model, so it is deliberately
+> not done.
 
 ## 12. Troubleshooting
 

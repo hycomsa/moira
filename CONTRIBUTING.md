@@ -33,10 +33,19 @@ python3 orchestrator/moira_api.py --repo /path/to/ai-sdlc-repo   # API on :8765
 npm --prefix cockpit run dev                                     # UI on :5173 (proxies /api)
 ./run-desktop.sh                 # native desktop shell (needs cargo + webkit2gtk)
 
-# optional external durable runner (disable embedded runner in the API first):
-MOIRA_RUNNER_MODE=external python3 orchestrator/moira_api.py --repo /path/to/ai-sdlc-repo
-python3 orchestrator/moira_runner.py --db .moira/moira.sqlite
+# optional external durable runner (team mode). External runners share ONE primary
+# store across processes, so they REQUIRE Postgres — SQLite is rejected (unsafe
+# multi-process). Disable the API's embedded runner, point both at Postgres:
+export MOIRA_PRIMARY=postgres MOIRA_PG_DSN=postgresql://moira:moira@localhost:5432/moira
+MOIRA_RUNNER_MODE=off python3 orchestrator/moira_api.py --repo /path/to/ai-sdlc-repo
+python3 orchestrator/moira_runner.py --mode external      # claims jobs from Postgres
 ```
+
+> **Auth:** `run-cockpit.sh` defaults to `MOIRA_AUTH_MODE=local` (the sidecar injects a
+> session token into the served UI). Plain `python3 orchestrator/moira_api.py` and
+> `run-desktop.sh` run `auth=off` (no enforcement). For team mode set
+> `MOIRA_AUTH_MODE=oidc` + `MOIRA_OIDC_*` and `pip install "moira-orchestrator[auth]"`.
+> Full env-var reference: `orchestrator/PERSISTENCE.md`.
 
 ## Tests & build (run before opening a PR)
 

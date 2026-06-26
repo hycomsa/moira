@@ -34,12 +34,14 @@
 
 | Item | Status | Why |
 |---|---|---|
-| LangGraph engine (ADR-002) | Deferred | spike uses dependency-free state machine; proves governance/audit, not the engine. v0.2. |
+| LangGraph engine (ADR-002) | Deferred | runtime uses a dependency-free DAG engine; proves governance/audit. LangGraph superseded for v0.2 (ADR-002/006). |
 | Real `ClaudeCodeBackend` run | Wired, not exercised | needs `claude` CLI + login; offline proof via MockBackend. |
-| Tauri 3-column cockpit (exAI-inspired) | Not built | CLI `show`/`audit` is the same data; UI renders it. |
+| Tauri 3-column cockpit (exAI-inspired) | Built (web); desktop runs auth `off` | web cockpit served by the sidecar with token auth; Tauri-webview token = future. |
 | LiteLLM multi-backend + local Ollama (P1) | Not built | backend registry ready; add `LiteLLMBackend`. |
-| Enforced RBAC / SSO identity / signed log | Designed not built | `operating-model.md` — v0.2+; owner field present from day 1. |
-| Arbitrary DAG / parallel nodes | Linear + reject-goto only | sufficient for the slice; LangGraph later. |
+| Enforced RBAC | **Built** | 5 roles (admin/developer/compliance/client/viewer), default-deny; `moira_core/authz.py`. |
+| JWT identity (local HS256 / OIDC) | **Built** | `moira_core/authn.py`, `MOIRA_AUTH_MODE=off\|local\|oidc`; live OIDC against a real IdP unverified. |
+| Signed event log | Deferred | hash chain is tamper-evident (`integrity.py`); cryptographic signing is future. |
+| Arbitrary DAG / parallel nodes | **Built** | `depends_on` DAG + parallel workers (ThreadPool) in `engine.py`. |
 
 ## Real backend (ClaudeCodeBackend) — exercised for real
 

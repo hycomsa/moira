@@ -60,12 +60,12 @@ python3 moira_cli.py audit <run-id>     # per-step audit records (the defensible
 
 ## What's proven vs deferred
 
-**Proven (this spike):** governed multi-stage pipeline · configurable gates (auto/hybrid/human/off) · confidence-driven routing · human pause/resume via Inbox · reject→rework with feedback · retry-N-then-gate · per-step audit record (input/output/tools/decisions/approvals/cost/time/owner) · git-native lineage · cost aggregation · append-only event log · faithful pipeline persistence/resume.
+**Proven:** governed multi-stage pipeline · configurable gates (auto/hybrid/human/off) · confidence-driven routing · human pause/resume via Inbox · reject→rework with feedback · retry-N-then-gate · per-step audit record (input/output/tools/decisions/approvals/cost/time/owner) · git-native lineage · cost aggregation · append-only event log · faithful pipeline persistence/resume · **durable runner** (jobs/leases/workers, embedded+external, lease heartbeat, mid-drive cancellation — ADR-006) · **tamper-evident audit** sealed into the primary store *and* the git mirror (hash chain + `GET /api/runs/{id}/verify` — ADR-005) · **governance packs** (repo-owned policy bundles, deterministic checks + gate — ADR-007) · **enforced default-deny RBAC** (5 roles) with JWT identity, local HS256 or OIDC (ADR-008).
 
-**Deferred:** LangGraph engine (ADR-002 — spike uses a dependency-free state machine); real `ClaudeCodeBackend` exercise (wired, needs CLI + login); Tauri cockpit (renders this same data); LiteLLM multi-backend; enforced RBAC / SSO identity / signed event log (operating-model.md — designed, not built).
+**Deferred:** LangGraph engine (ADR-002 — runtime uses a dependency-free DAG engine); LiteLLM multi-backend; **cryptographic signing** of the audit (the hash chain is tamper-evident but not signed); **live OIDC** against a real IdP + Tauri-webview token (web-cockpit auth works today).
 
-## Known v0.1 limitations
+## Known limitations
 
-- Engine is a linear state machine with single `on_reject_goto` rework targets (not arbitrary DAG). LangGraph in v0.2.
 - `ClaudeCodeBackend` parsing is best-effort against `claude --output-format json`.
-- Single-user; RBAC/identity modeled in the audit `owner` field but not enforced.
+- RBAC override *authority* for governance packs (`override.requires_reason` / `allowed_personas`) is enforced via the gate persona; a dedicated override endpoint is future work.
+- The HTTP API binds `127.0.0.1` only; LAN/mobile access needs an explicit bind address + OIDC (future), so the mobile companion is local-machine-only today.

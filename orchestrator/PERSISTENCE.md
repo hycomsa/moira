@@ -22,11 +22,32 @@ sink is active.
 
 | Var | Meaning | Default |
 |---|---|---|
+| **Persistence** | | |
 | `MOIRA_PRIMARY` | `sqlite` \| `postgres` | `sqlite` |
 | `MOIRA_DB` | SQLite file path | `.moira/moira.sqlite` |
-| `MOIRA_PG_DSN` | Postgres DSN (when primary = postgres) | — |
+| `MOIRA_PG_DSN` | Postgres DSN (when primary = postgres; needs `psycopg[binary]`) | — |
 | `MOIRA_GIT_EXPORT` | `1` to enable the git audit mirror | `0` |
 | `MOIRA_GIT_REPO` | git target (fallback; normally the run's workspace `repo_path`) | workspace repo |
+| **Durable runner (ADR-006)** | | |
+| `MOIRA_RUNNER_MODE` | `embedded` \| `external` \| `off` (embedded runner host) | `embedded` |
+| `MOIRA_RUNNER_LEASE_SECONDS` | job lease timeout | `300` |
+| `MOIRA_RUNNER_POLL_SECONDS` | runner idle poll interval | `0.5` |
+| `MOIRA_JOB_MAX_ATTEMPTS` | durable job max retry attempts | `3` |
+| **Auth / RBAC (ADR-008)** | | |
+| `MOIRA_AUTH_MODE` | `off` \| `local` \| `oidc` (off ⇒ enforcement disabled) | `off` |
+| `MOIRA_AUTH_SECRET` | HS256 secret for local self-issued tokens | random/process |
+| `MOIRA_OIDC_JWKS_URL` | OIDC JWKS endpoint (required when mode=oidc; needs `PyJWT[crypto]`) | — |
+| `MOIRA_OIDC_ISSUER` / `MOIRA_OIDC_AUDIENCE` | OIDC issuer / audience claims to verify | — |
+| `MOIRA_OIDC_GROUP_ROLES` | JSON map `{group: role}` → 5 roles | `{}` |
+| **Agent backend budgets** | | |
+| `MOIRA_CLAUDE_TIMEOUT` / `_MAX_TURNS` | default agent timeout (s) / turn budget | `600` / `12` |
+| `MOIRA_CLAUDE_HEAVY_TIMEOUT` / `_HEAVY_MAX_TURNS` | coding-agent budget | `1800` / `40` |
+| `MOIRA_CLAUDE_SKILL_TIMEOUT` / `_SKILL_MAX_TURNS` | discovery-skill budget | `300` / `20` |
+| `MOIRA_DEBUG` | `1` records the exact claude cmd/prompt into the audit | `0` |
+| `MOIRA_LOG` | sidecar logfile path | app-data |
+
+Git commits in the mirror happen **synchronously** on run-status transitions (a
+background commit worker is future work).
 
 The four scenarios:
 

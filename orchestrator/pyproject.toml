@@ -8,7 +8,14 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-# Real backends / future engine. Not needed for the offline test suite or demo.
+# Optional extras — each lazy-imported only on its path. The core + offline test
+# suite + local-mode auth stay stdlib-only (zero deps), by design.
+database = [
+    "psycopg[binary]>=3.0",  # PostgreSQL primary store (MOIRA_PRIMARY=postgres)
+]
+auth = [
+    "PyJWT[crypto]>=2.6",    # OIDC identity verification (MOIRA_AUTH_MODE=oidc)
+]
 backends = [
     "litellm>=1.40",     # multi-model routing (frontier + local Ollama)
 ]

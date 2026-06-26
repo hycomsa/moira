@@ -24,13 +24,16 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 ## What Moira gives you
 
 - **Governed gates** — auto / hybrid / human, with a **decision-ready Inbox**: every gate card shows AC-coverage + conformance, and a *failed* step shows the error with a one-click jump into the run.
-- **Git-native, tamper-evident audit** — every step and decision in a hash-chained trail; pluggable persistence (**SQLite / PostgreSQL / git mirror**).
+- **Git-native, tamper-evident audit** — every step and decision in a hash-chained trail, sealed into **both** the primary store and the git mirror (verify via `GET /api/runs/{id}/verify`); pluggable persistence (**SQLite / PostgreSQL / git mirror**).
+- **Enforced RBAC + identity** — default-deny authorization with 5 roles (admin/developer/compliance/client/viewer); JWT identity (local self-issued or **OIDC**); gate approvals come from the authenticated principal, not a spoofable field.
+- **Governance packs** — versioned, repo-owned compliance bundles (deterministic checks first, LLM as labeled second opinion) that block release on policy violations; the applied policy is sealed into the audit. Samples: `gdpr-basic`, `wcag2.2`, `logs-advanced`.
+- **Durable runner** — jobs/leases/workers with lease heartbeat, crash recovery, and mid-drive cancellation; embedded (desktop) or external (team, Postgres).
 - **End-to-end traceability** — **Spec ↔ Tests ↔ Tasks ↔ Code** completeness, measured deterministically from the repo, plus an optional **LLM conformance** scorecard as a second opinion.
 - **Git-native task/epic backlog** — Zdzira-compatible, one markdown per ticket; `pm@decompose-func` turns a func-spec into an epic + tasks tagged by acceptance criterion. *One format, four tools.*
-- **Deterministic quality gates** — `AUTO_CHECK` nodes: `ac_coverage` (every AC has a task) and `test_exec` (the test suite actually passes) — escalate to a human on a gap.
+- **Deterministic quality gates** — `AUTO_CHECK` nodes: `ac_coverage` (every AC has a task), `test_exec` (the test suite actually passes), `log_hygiene` (no sensitive data in logs) — escalate to a human on a gap.
 - **Delivery-health dashboard** — per-FUNC decomposed / tested / built / conformance across the whole repo, in one view.
 - **Discovery (BA mode)** — drive AI SDLC skills to author intents / requirements / func-specs, gated at each step — as guided presets *or* as a real pipeline.
-- **Model-agnostic, anywhere** — Claude Code CLI · LiteLLM (frontier + local, anti-lock-in) · Codex CLI. **Desktop · web · mobile** (gate inbox at `/m`).
+- **Model-agnostic** — Claude Code CLI · LiteLLM (frontier + local, anti-lock-in) · Codex CLI. **Desktop · web** cockpit (local gate inbox at `/m`; cross-device access needs OIDC + a bind address — future).
 
 ## What it looks like
 
@@ -47,7 +50,7 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 > `src-tauri/` (desktop shell). The AI SDLC framework content (intents, requirements, specs, agents, skills)
 > and any target application code live in **separate** repositories Moira reads/writes as a *workspace*.
 
-**Status — v0.1 · 138 unit tests green · proven end-to-end on a real project (CSL Driver).**
+**Status — v0.1 · 216 unit/integration tests green (SQLite + live Postgres) · proven end-to-end on a real project (CSL Driver).**
 
 ## Getting started
 
@@ -56,14 +59,15 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 ## Run the cockpit
 
 ```bash
-# web cockpit (no Tauri needed) — builds frontend, serves it + API on one origin
+# web cockpit (no Tauri needed) — builds frontend, serves it + API on one origin.
+# Auth ON by default (MOIRA_AUTH_MODE=local): the sidecar injects a session token.
 ./run-cockpit.sh                 # -> http://127.0.0.1:8765
 
-# dev mode (hot reload): two terminals
+# dev mode (hot reload): two terminals (no auth unless you set MOIRA_AUTH_MODE)
 python3 orchestrator/moira_api.py --repo ../ai-sdlc      # API on :8765
 npm --prefix cockpit run dev                              # UI on :5173 (proxies /api)
 
-# desktop shell (needs tauri-cli + webkit2gtk)
+# desktop shell (needs tauri-cli + webkit2gtk) — runs auth=off (single-user, local)
 cargo tauri dev
 ```
 
