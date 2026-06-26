@@ -19,6 +19,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import threading
 from typing import Any
 
 from ..models import BackendResult, Cost, Node
@@ -97,6 +98,23 @@ class ClaudeCodeBackend:
         # bounds a hung skill (turns don't affect a hang — the watchdog kills on time), so fail-fast holds.
         self.skill_timeout = skill_timeout if skill_timeout is not None else _env("MOIRA_CLAUDE_SKILL_TIMEOUT", 300)
         self.skill_max_turns = skill_max_turns if skill_max_turns is not None else _env("MOIRA_CLAUDE_SKILL_MAX_TURNS", 20)
+        # active subprocesses (one per running node; parallel nodes share this backend),
+        # so cancel() can terminate in-flight work (B1).
+        self._active: set = set()
+        self._active_lock = threading.Lock()
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Terminate every in-flight claude subprocess (best-effort) — called by the
+        runner when a cancellation is requested mid-run."""
+        self._cancelled = True
+        with self._active_lock:
+            procs = list(self._active)
+        for p in procs:
+            try:
+                p.kill()
+            except Exception:  # noqa: BLE001
+                pass
 
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
@@ -287,11 +305,20 @@ class ClaudeCodeBackend:
             emit({"kind": "debug", "text": "$ " + " ".join(shlex.quote(c) for c in cmd)
                   + f"\n# cwd={context.get('cwd')} role={role} timeout={timeout}s"}, 0, 0)
 
+        if self._cancelled:  # cancellation already requested — don't even start
+            return BackendResult(ok=False, error="cancelled")
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, bufsize=1, cwd=context.get("cwd"))
         except Exception as e:  # noqa: BLE001
             return BackendResult(ok=False, error=f"claude CLI error: {e}")
+        with self._active_lock:
+            self._active.add(proc)
+        if self._cancelled:  # raced with cancel() — kill immediately
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
 
         import threading as _threading
         timed_out = {"v": False}
@@ -309,6 +336,11 @@ class ClaudeCodeBackend:
             proc.wait()
         finally:
             watchdog.cancel()
+            with self._active_lock:
+                self._active.discard(proc)
+
+        if self._cancelled:
+            return BackendResult(ok=False, error="cancelled")
 
         if timed_out["v"]:
             if debug:

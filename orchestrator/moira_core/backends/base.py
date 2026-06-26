@@ -34,3 +34,16 @@ class BackendRegistry:
 
     def available(self) -> list[str]:
         return list(self._backends)
+
+    def cancel_active(self) -> None:
+        """Best-effort: ask every backend to terminate any in-flight work (B1).
+
+        A backend opts in by defining `cancel()` (e.g. ClaudeCodeBackend kills its
+        active subprocess); backends without it are simply skipped."""
+        for backend in self._backends.values():
+            cancel = getattr(backend, "cancel", None)
+            if callable(cancel):
+                try:
+                    cancel()
+                except Exception:  # noqa: BLE001 — a cancel must never raise into the caller
+                    pass

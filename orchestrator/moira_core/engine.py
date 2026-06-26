@@ -27,7 +27,7 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from .backends.base import BackendRegistry
 from .gates import evaluate_gate
@@ -76,20 +76,25 @@ class Engine:
         self.store.save_run_state(run_id, {n.id: PENDING for n in pipeline.nodes})
         return run_id
 
-    def drive_existing(self, run_id: str, pipeline: Pipeline,
-                       context: dict[str, Any]) -> RunResult:
-        """Drive a previously-`create`d run from its persisted state (the slow part)."""
+    def drive_existing(self, run_id: str, pipeline: Pipeline, context: dict[str, Any],
+                       should_cancel: Optional[Callable[[], bool]] = None) -> RunResult:
+        """Drive a previously-`create`d run from its persisted state (the slow part).
+
+        `should_cancel`, if given, is polled between node batches (and after each
+        batch executes) so a cancellation request is honored mid-drive (B1)."""
         state = self.store.get_run_state(run_id) or {n.id: PENDING for n in pipeline.nodes}
-        return self._drive(run_id, pipeline, context, state)
+        return self._drive(run_id, pipeline, context, state, should_cancel)
 
     def start(self, pipeline: Pipeline, context: dict[str, Any],
-              workspace_id: str = "default") -> RunResult:
+              workspace_id: str = "default",
+              should_cancel: Optional[Callable[[], bool]] = None) -> RunResult:
         """Synchronous create + drive (CLI / tests / synchronous callers)."""
         run_id = self.create(pipeline, context, workspace_id)
-        return self.drive_existing(run_id, pipeline, context)
+        return self.drive_existing(run_id, pipeline, context, should_cancel)
 
     def resume(self, run_id: str, pipeline: Pipeline, context: dict[str, Any],
-               decision: GateDecision) -> RunResult:
+               decision: GateDecision,
+               should_cancel: Optional[Callable[[], bool]] = None) -> RunResult:
         run = self.store.get_run(run_id)
         if not run:
             raise KeyError(run_id)
@@ -128,11 +133,19 @@ class Engine:
         else:  # approve
             state[waiting] = DONE
         self.store.save_run_state(run_id, state)
-        return self._drive(run_id, pipeline, context, state)
+        return self._drive(run_id, pipeline, context, state, should_cancel)
+
+    def _cancel(self, run_id: str) -> RunResult:
+        self.store.update_run_status(run_id, Status.CANCELLED.value)
+        self._event(run_id, "run.cancel", "Run cancelled mid-drive")
+        log.info("run.cancel run=%s", run_id)
+        return RunResult(run_id, Status.CANCELLED)
 
     # ---- core DAG loop ----------------------------------------------------- #
     def _drive(self, run_id: str, pipeline: Pipeline, context: dict[str, Any],
-               state: dict[str, str]) -> RunResult:
+               state: dict[str, str],
+               should_cancel: Optional[Callable[[], bool]] = None) -> RunResult:
+        cancelled = should_cancel or (lambda: False)
         deps = pipeline.dep_map()
         upstream = context.setdefault("upstream", {})
         vr = context.setdefault("verifier_results", {})
@@ -146,6 +159,8 @@ class Engine:
                     context["produced_artifact"] = rec["output"]["artifact"]
 
         while True:
+            if cancelled():
+                return self._cancel(run_id)
             ready = [n for n in pipeline.nodes
                      if state[n.id] == PENDING and all(state.get(d) == DONE for d in deps[n.id])]
             if not ready:
@@ -184,6 +199,10 @@ class Engine:
                         vr[n.id] = res
                     state[n.id] = DONE
                 self.store.save_run_state(run_id, state)
+                # completed nodes are persisted above; if cancellation was requested
+                # (possibly killing a node mid-flight), stop now instead of scheduling more.
+                if cancelled():
+                    return self._cancel(run_id)
                 continue
 
             # only gates ready

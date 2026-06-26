@@ -297,14 +297,14 @@ Cancellation is a first-class control-plane action.
 - the runner checks it once **before it begins executing a claimed job** (`drive_run`/`resume_run`); a not-yet-started run cancels cleanly, and a run waiting at a gate cancels instead of resuming,
 - the runner marks run + job `cancelled` and honors the request, with event + audit evidence.
 
-**Deferred (future work) — mid-drive cancellation and subprocess kill:**
+**Mid-drive cancellation + subprocess kill (implemented, B1):**
 
-A run already inside a long `Engine.drive_existing` call (e.g. a 20-minute Claude/Codex node) is **not** interrupted in v0.2: cancellation takes effect at the next job boundary, and the active backend subprocess is **not** killed. Honest scope — the code and this ADR agree. Two follow-ups deliver true mid-run cancellation:
+A run inside a long `Engine.drive_existing` call is now interrupted:
 
-1. thread a cooperative `should_cancel()` check into the engine's drive loop so cancellation is honored between node batches, and
-2. give backends a `cancel()`/terminate hook (`ClaudeCodeBackend`, `LiteLLMBackend`) so the runner can kill the active subprocess.
+1. `Engine._drive` polls a `should_cancel()` callback between node batches (and after each batch persists), returning `CANCELLED` instead of scheduling more work;
+2. the runner's heartbeat thread also watches `cancellation_requested(run_id)` (ticking ≤2s) and calls `BackendRegistry.cancel_active()`, which invokes each backend's optional `cancel()` — `ClaudeCodeBackend.cancel()` kills its in-flight subprocess(es), unblocking the long node so the engine stops promptly.
 
-Both are tracked in Open Questions; neither is required for the embedded desktop slice.
+`LiteLLMBackend` has no subprocess to kill (an in-flight HTTP call) — cancel for it remains best-effort/future; the engine's between-batch `should_cancel` still bounds it. Completed nodes are persisted before cancelling, so the audit stays accurate.
 
 ## Retry semantics
 
@@ -392,11 +392,13 @@ Done in the v0.2 slice:
 - **lost-lease detection**: `complete_job`/`mark_job_running` report rows affected; a worker that lost its lease aborts/logs instead of silently "succeeding",
 - external mode refuses SQLite (requires Postgres).
 
-Deferred (see Cancellation / Open Questions): mid-drive cancellation, backend subprocess kill, durable `eval`/`report` jobs, live Postgres multi-runner soak test.
+Also done (B1): mid-drive cancellation (engine `should_cancel` + runner kill) and `ClaudeCodeBackend` subprocess kill.
+
+Deferred: durable `eval`/`report` jobs, live Postgres multi-runner soak test, `LiteLLMBackend` in-flight cancel.
 
 ## Open Questions
 
 - ~~Exact Postgres claim implementation~~ — **resolved:** `SELECT … FOR UPDATE SKIP LOCKED`.
 - ~~Whether `eval` remains synchronous~~ — **resolved for v0.2:** eval stays a documented synchronous control-plane exception (above); revisit only if eval becomes long-running/repo-mutating.
 - Whether the embedded runner starts automatically in every local sidecar or is controlled by `MOIRA_RUNNER_MODE` (currently: starts unless `MOIRA_RUNNER_MODE` is `off`/`external`).
-- Active Claude/Codex subprocess cancellation requires backend interface changes (a `cancel()`/terminate hook) beyond best-effort process kill — deferred with mid-drive cancellation.
+- ~~Active Claude/Codex subprocess cancellation requires backend interface changes~~ — **resolved (B1):** `BackendRegistry.cancel_active()` + `ClaudeCodeBackend.cancel()` kill in-flight subprocesses; `LiteLLMBackend` HTTP-call cancel remains best-effort/future.

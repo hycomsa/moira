@@ -104,23 +104,28 @@ class DurableRunner:
             payload = job.get("payload") or {}
             pipeline = Pipeline.from_dict(json.loads(run["pipeline"]))
             context = payload.get("context") or {}
-            engine = Engine(store, self.registry_factory(), owner=run.get("owner", "unknown"))
+            registry = self.registry_factory()
+            engine = Engine(store, registry, owner=run.get("owner", "unknown"))
 
             # Keep the lease alive while the (potentially long) engine drive runs, so a
             # second worker never steals and double-executes this run (ADR-006:110). The
-            # heartbeat uses its OWN store connection on a daemon thread — store writes
-            # from the engine stay on this thread.
+            # same heartbeat thread also watches for a cancellation request and kills the
+            # active backend subprocess (B1) — the engine's should_cancel then stops at the
+            # next node boundary. Heartbeat uses its OWN store connection on a daemon thread.
             stop_heartbeat = threading.Event()
-            hb = threading.Thread(target=self._heartbeat_loop, args=(job["job_id"], stop_heartbeat),
+            hb = threading.Thread(target=self._heartbeat_loop,
+                                  args=(job["job_id"], run_id, registry, stop_heartbeat),
                                   daemon=True, name=f"hb-{job['job_id']}")
             hb.start()
+            # cooperative cancellation: the engine polls this between node batches
+            should_cancel = lambda: store.cancellation_requested(run_id)  # noqa: E731
             try:
                 if job["kind"] == "drive_run":
-                    result = engine.drive_existing(run_id, pipeline, context)
+                    result = engine.drive_existing(run_id, pipeline, context, should_cancel)
                 elif job["kind"] == "resume_run":
                     decision_data = payload.get("decision") or {}
                     decision = GateDecision(**decision_data)
-                    result = engine.resume(run_id, pipeline, context, decision)
+                    result = engine.resume(run_id, pipeline, context, decision, should_cancel)
                 else:
                     store.complete_job(job["job_id"], self.worker_id, "failed",
                                        f"unknown job kind: {job['kind']}")
@@ -130,6 +135,8 @@ class DurableRunner:
                 hb.join(timeout=2)
 
             status = result.status.value
+            if status == Status.CANCELLED.value:
+                store.honor_cancellation(run_id)
             if not store.complete_job(job["job_id"], self.worker_id, status):
                 # 0 rows updated => our lease was stolen mid-run despite heartbeat (e.g. a
                 # DB stall longer than the lease). The current owner is authoritative; log
@@ -145,15 +152,28 @@ class DurableRunner:
                 store.complete_job(job["job_id"], self.worker_id, "failed",
                                    f"{e}\n{traceback.format_exc()}"[:4000])
 
-    def _heartbeat_loop(self, job_id: str, stop: threading.Event) -> None:
-        """Renew the job lease on a timer until told to stop. Own store connection."""
-        interval = max(0.5, self.lease_seconds / 3.0)
+    def _heartbeat_loop(self, job_id: str, run_id: str, registry, stop: threading.Event) -> None:
+        """Renew the job lease AND watch for cancellation. Own store connection.
+
+        Ticks at <=2s (capped below lease/3) so a cancellation request is acted on
+        promptly: on the first request we kill the active backend (subprocess), which
+        unblocks the long node so the engine's should_cancel can stop the run (B1).
+        """
+        interval = max(0.2, min(2.0, self.lease_seconds / 3.0))
         store = self.store_factory()
+        killed = False
         try:
             store.heartbeat_job(job_id, self.worker_id, self.lease_seconds)
             while not stop.wait(interval):
                 try:
                     store.heartbeat_job(job_id, self.worker_id, self.lease_seconds)
+                    if not killed and store.cancellation_requested(run_id):
+                        killed = True
+                        log.info("cancellation requested for run %s — killing active backend", run_id)
+                        try:
+                            registry.cancel_active()
+                        except Exception:  # noqa: BLE001
+                            pass
                 except Exception:  # noqa: BLE001 — a transient DB hiccup must not kill the thread
                     pass
         finally:
