@@ -37,6 +37,7 @@ from moira_core import (  # noqa: E402
 from moira_core.gates import simulate_routing  # noqa: E402
 from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
 from moira_core import tasks as task_model  # noqa: E402
+from moira_core import authn, authz  # noqa: E402
 
 DB = os.environ.get("MOIRA_DB", ".moira/moira.sqlite")
 REPO = None
@@ -533,12 +534,38 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # quieter
         pass
 
+    # ---- auth (must-fix #2) ----------------------------------------------- #
+    def _principal(self):
+        auth = self.headers.get("Authorization", "") or ""
+        token = auth[7:].strip() if auth[:7].lower() == "bearer " else None
+        try:
+            return authn.principal_from_token(token)
+        except Exception:  # noqa: BLE001 — misconfig/verification error => unauthenticated
+            return None
+
+    def _enforce(self, method: str, path: str) -> bool:
+        """Set self.principal and authorize the request. Returns True to proceed.
+
+        No-op (full local-admin access) when MOIRA_AUTH_MODE=off, so the app keeps
+        working until auth is turned on. Otherwise default-deny: 401/403 via authz.
+        """
+        self.principal = self._principal()
+        if authn.auth_mode() == "off":
+            return True
+        verdict = authz.authorize_request(method, path, self.principal)
+        if verdict is not None:
+            self._send(verdict[0], verdict[1])
+            return False
+        return True
+
     def do_OPTIONS(self):
         self._send(204)
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if not self._enforce("DELETE", path):
+            return
         ws_id = parse_qs(parsed.query).get("ws", ["default"])[0]
         store = open_store()
         ensure_default_workspace(store)
@@ -558,6 +585,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path == "/api/ready":
+            # public readiness — no paths/secrets (auth-independent liveness probe)
+            return self._send(200, {"ready": True, "auth_mode": authn.auth_mode()})
+        if not self._enforce("GET", path):
+            return
         ws_id = parse_qs(parsed.query).get("ws", ["default"])[0]
         store = open_store()
         ensure_default_workspace(store)
@@ -875,6 +907,8 @@ class Handler(BaseHTTPRequestHandler):
     # ---- POST ------------------------------------------------------------- #
     def do_POST(self):
         path = urlparse(self.path).path
+        if not self._enforce("POST", path):
+            return
         body = self._body()
         store = open_store()
         ensure_default_workspace(store)
@@ -1140,13 +1174,32 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(409, {"error": "run is not waiting at a gate",
                                             "run_id": run_id, "status": run.get("status")})
                 pipe = Pipeline.from_dict(json.loads(run["pipeline"]))
+                # the persona this gate requires — enforce the authenticated principal may act for it
+                state = store.get_run_state(run_id) or {}
+                waiting_nid = next((nid for nid, s in state.items() if s == "waiting_gate"), None)
+                gate_persona = ""
+                if waiting_nid:
+                    try:
+                        gnode = pipe.by_id(waiting_nid)
+                        gate_persona = (gnode.gate.persona if gnode.gate else "") or ""
+                    except KeyError:
+                        gate_persona = ""
+                principal = getattr(self, "principal", None)
+                if (authn.auth_mode() != "off" and gate_persona
+                        and not authz.can_approve(principal, gate_persona)):
+                    return self._send(403, {"error": "not authorized to decide this gate persona",
+                                            "persona": gate_persona,
+                                            "subject": getattr(principal, "subject", None)})
+                # approver identity comes from the authenticated principal, NOT the request body
+                approver = getattr(principal, "subject", None) or body.get("by", "human")
+                src = getattr(principal, "auth_source", "request")
                 if path.endswith("/approve"):
-                    dec = GateDecision(decision="approve", by=body.get("by", "human"),
-                                       confirmed=body.get("confirm", "approved via cockpit"))
+                    dec = GateDecision(decision="approve", by=approver,
+                                       confirmed=f"{body.get('confirm', 'approved')} (via {src})")
                 else:
-                    dec = GateDecision(decision="reject", by=body.get("by", "human"),
-                                       feedback=body.get("feedback", "rejected via cockpit"),
-                                       confirmed="rejected via cockpit")
+                    dec = GateDecision(decision="reject", by=approver,
+                                       feedback=body.get("feedback", "rejected"),
+                                       confirmed=f"rejected (via {src})")
                 # rebuild run context so post-gate nodes (e.g. docs) keep spec + cwd
                 run_ws = run.get("workspace_id", "default")
                 func_id = next((a.get("input", {}).get("spec_ref")
