@@ -436,10 +436,14 @@ footer .grow{margin-left:auto}
       <p>Every run renders to Markdown committed into the repo — with diffs and audit-chain status.</p></div>
     <div class="feat reveal"><div class="ico">⚖️</div><h3>Evals &amp; scorecards</h3>
       <p>Score a run's quality or spec↔code conformance (LLM-as-judge). Each eval is its own audited run.</p></div>
-    <div class="feat reveal"><div class="ico">🛡️</div><h3>Compliance as an eval</h3>
-      <p>Audit code against regulations (GDPR, WCAG, NIS2, AI Act…) — findings with severity, article and location.</p></div>
-    <div class="feat reveal"><div class="ico">📱</div><h3>Mobile companion</h3>
-      <p>Approve gates from your phone. Review the checks and the diff, tap Approve / Reject — on the go.</p></div>
+    <div class="feat reveal"><div class="ico">🛡️</div><h3>Governance packs</h3>
+      <p>Versioned, repo-owned compliance bundles (GDPR, WCAG, log-hygiene…). Deterministic checks block release on HIGH/CRITICAL; the LLM is a labeled second opinion. The applied policy is sealed into the audit.</p></div>
+    <div class="feat reveal"><div class="ico">📱</div><h3>Gate inbox</h3>
+      <p>A lightweight inbox to review the checks + diff and Approve / Reject. Local today; phone/LAN access is on the roadmap (OIDC).</p></div>
+    <div class="feat reveal"><div class="ico">🔐</div><h3>Roles &amp; identity</h3>
+      <p>Enforced default-deny RBAC (5 roles) with JWT identity — local or OIDC. Gate approvals come from the authenticated person, not a field you can type.</p></div>
+    <div class="feat reveal"><div class="ico">⚙️</div><h3>Durable runner</h3>
+      <p>Jobs, leases and workers with heartbeat, crash recovery and mid-run cancellation. Embedded on the desktop, external (Postgres) for teams.</p></div>
   </div>
 </div></section>
 
@@ -562,7 +566,7 @@ footer .grow{margin-left:auto}
     <div class="rm-col">
       <div class="rm-h rm-next">→ Coming</div>
       <ul>
-        <li>In-pipeline compliance gate — block merge on BLOCKER/HIGH (CISO/DPO persona)</li>
+        <li>Signed audit (chain-head signature) · live OIDC SSO · mobile/LAN access</li>
         <li>Executor closes tasks live (status + commit) → real-time completeness</li>
         <li>Zdzira round-trip — manage the same backlog visually on a Kanban</li>
         <li>Run compare A/B (model · cost · diff · decisions)</li>
@@ -586,7 +590,7 @@ footer .grow{margin-left:auto}
     <span class="bdg"><b>Model-agnostic</b> backends</span>
     <span class="bdg"><b>Hash chain</b> · tamper-evident</span>
     <span class="bdg"><b>Gates</b> auto / hybrid / human</span>
-    <span class="bdg"><b>Desktop · web · mobile</b></span>
+    <span class="bdg"><b>Desktop · web</b></span>
   </div>
 </div></section>
 

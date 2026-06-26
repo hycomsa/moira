@@ -443,10 +443,14 @@ footer .grow{margin-left:auto}
       <p>Każdy przebieg renderuje się do Markdown i ląduje w repo — z diffami i statusem łańcucha audytu.</p></div>
     <div class="feat reveal"><div class="ico">⚖️</div><h3>Evals &amp; karty wyników</h3>
       <p>Oceń jakość przebiegu lub zgodność spec ↔ kod (LLM-as-judge). Każda ocena to osobny, audytowany przebieg.</p></div>
-    <div class="feat reveal"><div class="ico">🛡️</div><h3>Compliance jako ocena</h3>
-      <p>Audyt kodu względem regulacji (RODO, WCAG, NIS2, AI Act…) — znaleziska z severity, artykułem i lokalizacją.</p></div>
-    <div class="feat reveal"><div class="ico">📱</div><h3>Towarzysz mobilny</h3>
-      <p>Zatwierdzaj bramki z telefonu. Sprawdzasz checki i diff, klikasz Akceptuj / Odrzuć — w drodze.</p></div>
+    <div class="feat reveal"><div class="ico">🛡️</div><h3>Pakiety governance</h3>
+      <p>Wersjonowane, trzymane w repo pakiety compliance (RODO, WCAG, higiena logów…). Deterministyczne checki blokują release przy HIGH/CRITICAL; LLM to oznaczona druga opinia. Zastosowana polityka jest zaplombowana w audycie.</p></div>
+    <div class="feat reveal"><div class="ico">📱</div><h3>Skrzynka bramek</h3>
+      <p>Lekka skrzynka: przejrzyj checki + diff i Akceptuj / Odrzuć. Dziś lokalnie; dostęp z telefonu/LAN w planach (OIDC).</p></div>
+    <div class="feat reveal"><div class="ico">🔐</div><h3>Role i tożsamość</h3>
+      <p>Egzekwowane RBAC default-deny (5 ról) + tożsamość JWT — lokalna lub OIDC. Zatwierdzenie bramki pochodzi od uwierzytelnionej osoby, nie z pola do wpisania.</p></div>
+    <div class="feat reveal"><div class="ico">⚙️</div><h3>Trwały runner</h3>
+      <p>Zadania, dzierżawy i workery z heartbeatem, odzyskiwaniem po awarii i anulowaniem w trakcie. Wbudowany na desktopie, zewnętrzny (Postgres) dla zespołów.</p></div>
   </div>
 </div></section>
 
@@ -723,7 +727,7 @@ footer .grow{margin-left:auto}
     <span class="bdg"><b>Model-agnostic</b> backendy</span>
     <span class="bdg"><b>Łańcuch haszy</b> · odporny na manipulację</span>
     <span class="bdg"><b>Bramki</b> auto / hybryda / człowiek</span>
-    <span class="bdg"><b>Desktop · web · mobile</b></span>
+    <span class="bdg"><b>Desktop · web</b></span>
   </div>
 </div></section>
 
