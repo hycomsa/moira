@@ -94,8 +94,12 @@ orchestrator/   Python sidecar — DAG engine, gates, audit (hash chain), plugga
                 persistence (SQLite/Postgres/git), HTTP API, backends (mock/claude_code/litellm)
 cockpit/        React + TypeScript + Vite frontend (+ mobile gate inbox)
 src-tauri/      Tauri v2 desktop shell (spawns the sidecar)
-docs/           Marketing landing pages (PL + EN)
+docs/           Marketing landing pages (PL + EN), ADRs (adr/), design notes (design/)
 ```
+
+**Architecture & design:** [`docs/adr/`](docs/adr/README.md) (decision records) ·
+[`docs/design/`](docs/design/README.md) (product design notes: intents, audit-record spec,
+operating model, red-team verdict).
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to run, test and build.
 
