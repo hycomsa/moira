@@ -17,6 +17,13 @@ from enum import Enum
 from typing import Any, Optional
 
 
+# Reasoning-effort tiers a backend may run an agent/node at. Mirrors the Claude
+# Code `--effort` flag and the litellm `reasoning_effort` kwarg. "" = backend
+# default (no flag/kwarg passed). The CLI gracefully downgrades a level a given
+# model doesn't support (e.g. xhigh -> high on Opus 4.6), so offering all is safe.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
 # --------------------------------------------------------------------------- #
 # Enums
 # --------------------------------------------------------------------------- #
@@ -153,6 +160,7 @@ class Node:
     type: NodeType
     backend: str = "mock"                  # which AgentBackend
     model: str = "mock"                    # model hint for the backend
+    effort: str = ""                       # reasoning-effort tier ("" = backend default; see EFFORT_LEVELS)
     role: str = ""                         # e.g. requirements-analyst, code-generator
     spec_ref: str = ""                     # FUNC/INT/REQ section this node works on
     gate: Optional[GateConfig] = None      # only for GATE nodes
@@ -172,7 +180,8 @@ class Node:
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id, "name": self.name, "type": self.type.value,
-            "backend": self.backend, "model": self.model, "role": self.role,
+            "backend": self.backend, "model": self.model, "effort": self.effort,
+            "role": self.role,
             "spec_ref": self.spec_ref,
             "gate": self.gate.to_dict() if self.gate else None,
             "on_reject_goto": self.on_reject_goto, "max_retries": self.max_retries,
@@ -186,6 +195,7 @@ class Node:
         return cls(
             id=d["id"], name=d["name"], type=NodeType(d["type"]),
             backend=d.get("backend", "mock"), model=d.get("model", "mock"),
+            effort=d.get("effort", ""),
             role=d.get("role", ""), spec_ref=d.get("spec_ref", ""),
             gate=GateConfig.from_dict(d["gate"]) if d.get("gate") else None,
             on_reject_goto=d.get("on_reject_goto"), max_retries=d.get("max_retries", 2),
@@ -208,6 +218,7 @@ class AgentDefinition:
     role: str = ""                    # backend role key (defaults to id)
     backend: str = "claude_code"      # default backend (frontier; overridable per node/run)
     model: str = ""                   # optional model hint ("" = backend default)
+    effort: str = ""                  # default reasoning-effort tier ("" = backend default; see EFFORT_LEVELS)
     description: str = ""
     tools_policy: str = "reasoning"   # reasoning (tool-light) | coding (full tools)
     system_prompt: str = ""

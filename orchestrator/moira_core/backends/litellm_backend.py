@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..models import BackendResult, Cost, Node
+from ..models import BackendResult, Cost, EFFORT_LEVELS, Node
 from . import contract
 
 # litellm is imported LAZILY (it's a heavy import, ~seconds) so the API sidecar
@@ -63,10 +63,15 @@ class LiteLLMBackend:
                 feedback=context.get("feedback", {}).get(node.id, ""),
             )},
         ]
+        # per-node reasoning-effort tier (OpenAI-style; litellm maps it per provider).
+        # allow-list guards junk; "" / unknown -> omit the kwarg (provider default).
+        extra: dict[str, Any] = {}
+        if node.effort in EFFORT_LEVELS:
+            extra["reasoning_effort"] = node.effort
         try:
             resp = ll.completion(
                 model=model, messages=messages,
-                temperature=self.temperature, timeout=self.timeout,
+                temperature=self.temperature, timeout=self.timeout, **extra,
             )
         except Exception as e:  # noqa: BLE001 — auth, network, unknown model, etc.
             return BackendResult(ok=False, error=f"litellm error ({model}): {e}")

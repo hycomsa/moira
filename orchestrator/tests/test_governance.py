@@ -104,6 +104,21 @@ class TestCompilePack(unittest.TestCase):
                     "gov-gdpr-basic-gdpr-review"):
             self.assertIn(cid, gate.depends_on)
 
+    def test_effort_threads_to_llm_node_only(self):
+        nodes = compile_pack(_valid_pack(), after=["prev"], effort="high")
+        by_id = {n.id: n for n in nodes}
+        self.assertEqual(by_id["gov-gdpr-basic-gdpr-review"].effort, "high")  # advisory LLM node
+        self.assertEqual(by_id["gov-gdpr-basic-secrets-scan"].effort, "")     # deterministic check
+        self.assertEqual(by_id["gov-gdpr-basic-gate"].effort, "")             # gate
+
+    def test_attach_pack_threads_effort(self):
+        from moira_core.governance import attach_pack
+        host = Pipeline(id="p", name="P", nodes=[
+            Node(id="work", name="work", type=NodeType.PRODUCER, role="x", backend="mock")])
+        attach_pack(host, _valid_pack(), effort="xhigh")
+        llm = next(n for n in host.nodes if n.id == "gov-gdpr-basic-gdpr-review")
+        self.assertEqual(llm.effort, "xhigh")
+
     def test_compiled_pipeline_validates(self):
         host = Node(id="prev", name="work", type=NodeType.PRODUCER, role="x")
         pipe = Pipeline(id="p", name="P", nodes=[host] + compile_pack(_valid_pack(), after=["prev"]))

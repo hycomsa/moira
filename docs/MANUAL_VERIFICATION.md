@@ -49,3 +49,7 @@ governance gate e2e) is automated and green.
 9. **Agent field help tooltips**
    - Open an agent's editor → each field label has a **"?"** icon; hover it.
    - Expect: a tooltip explains the field. Note `tools_policy` and `skill_refs` are described as **advisory** (the agent's `role` is what actually drives tool access / budget / behaviour).
+
+10. **Model effort reaches the `claude` CLI** (needs a real `claude` binary on PATH)
+    - Guided run → step 2 (Backend): pick **Claude Code**, set **Reasoning effort = high**, start a run.
+    - Expect (with `MOIRA_DEBUG=1`): the run's live log shows a `debug` record whose rendered command contains `--effort high`. The Agents editor also exposes a per-agent **Reasoning effort** default; a run/per-node value overrides it. (Levels low→max; the CLI downgrades a level the chosen model doesn't support, e.g. `xhigh`→`high` on Opus 4.6.)

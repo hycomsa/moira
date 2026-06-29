@@ -85,6 +85,36 @@ class TestLiteLLMBackend(unittest.TestCase):
         self.assertFalse(res.ok)
         self.assertIn("not installed", res.error)
 
+    def test_reasoning_effort_passed_when_set(self):
+        captured = {}
+        content = f'{contract.START}{{"output":{{}},"decisions":[]}}{contract.END}'
+        fake = make_fake_litellm(content)
+        orig = fake.completion
+        def spy(model, messages, **kw):
+            captured.update(kw)
+            return orig(model, messages, **kw)
+        fake.completion = spy
+        lb.litellm = None  # reset; set below
+        lb.litellm = fake
+        node = Node(id="a", name="A", type=NodeType.PRODUCER, role="r",
+                    backend="litellm", model="gpt-4o", effort="high")
+        lb.LiteLLMBackend().run(node, {"spec_text": "s", "upstream": {}})
+        self.assertEqual(captured.get("reasoning_effort"), "high")
+
+    def test_no_reasoning_effort_when_empty(self):
+        captured = {}
+        content = f'{contract.START}{{"output":{{}},"decisions":[]}}{contract.END}'
+        fake = make_fake_litellm(content)
+        orig = fake.completion
+        def spy(model, messages, **kw):
+            captured.update(kw)
+            return orig(model, messages, **kw)
+        fake.completion = spy
+        lb.litellm = None  # reset; set below
+        lb.litellm = fake
+        lb.LiteLLMBackend().run(self._node("gpt-4o"), {"spec_text": "s", "upstream": {}})
+        self.assertNotIn("reasoning_effort", captured)
+
     def test_model_routing_uses_node_model(self):
         captured = {}
         content = f'{contract.START}{{"output":{{}},"decisions":[]}}{contract.END}'

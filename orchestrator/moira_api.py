@@ -250,6 +250,7 @@ def load_pipeline(store: Store, ws_id: str, body: dict, func_id: str):
     """Resolve the pipeline to run from the request body (repo pipeline_id,
     'client-gated' shortcut, or the default), applying a backend override."""
     backend = body.get("backend", "mock")
+    effort = body.get("effort", "")        # run-level reasoning-effort override ("" = leave per-node)
     pid = body.get("pipeline_id")
     rp = ws_repo(store, ws_id)
     repo = AISdlcRepo(rp) if rp else None
@@ -260,17 +261,25 @@ def load_pipeline(store: Store, ws_id: str, body: dict, func_id: str):
             for n in pipe.nodes:
                 if n.type.value != "gate":
                     n.backend = backend
+                    if effort:
+                        n.effort = effort
                     if not n.spec_ref:
                         n.spec_ref = func_id
             return pipe
     if body.get("pipeline") == "client-gated":
-        return client_gated_pipeline(func_ref=func_id, backend=backend)
-    return default_sdlc_pipeline(
-        func_ref=func_id,
-        analysis_gate=GateMode(body.get("analysis_gate", "auto")),
-        impl_gate=GateMode(body.get("impl_gate", "hybrid")),
-        backend=backend,
-    )
+        pipe = client_gated_pipeline(func_ref=func_id, backend=backend)
+    else:
+        pipe = default_sdlc_pipeline(
+            func_ref=func_id,
+            analysis_gate=GateMode(body.get("analysis_gate", "auto")),
+            impl_gate=GateMode(body.get("impl_gate", "hybrid")),
+            backend=backend,
+        )
+    if effort:
+        for n in pipe.nodes:
+            if n.type.value != "gate":
+                n.effort = effort
+    return pipe
 
 
 def context_for(func_id: str, repo_path: str | None) -> dict:
@@ -1007,7 +1016,8 @@ class Handler(BaseHTTPRequestHandler):
                         if perrs:
                             return self._send(400, {"error": "invalid governance pack",
                                                     "pack": pid, "errors": perrs})
-                        attach_pack(pipe, pack, model=body.get("model", ""))
+                        attach_pack(pipe, pack, model=body.get("model", ""),
+                                    effort=body.get("effort", ""))
                         applied_packs.append(pack)
                 errs = validate_pipeline(pipe)
                 if errs:

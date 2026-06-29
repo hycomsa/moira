@@ -143,14 +143,14 @@ const DELETE = (p: string) =>
 
 export interface AgentDef {
   id: string; name: string; type: string; category: string; role?: string;
-  backend: string; model?: string; description?: string;
+  backend: string; model?: string; effort?: string; description?: string;
   tools_policy?: string; system_prompt?: string; skill_refs?: string[];
 }
 export interface PipelineNodeDef {
   id: string; agent?: string; type?: string; name?: string; spec_ref?: string;
   max_retries?: number; on_reject_goto?: string | null;
   depends_on?: string[]; check_cmd?: string;
-  backend?: string; model?: string;   // per-node overrides (cross-model wiring)
+  backend?: string; model?: string; effort?: string;   // per-node overrides (cross-model wiring)
   gate?: { mode: string; persona?: string; consumes?: string[]; reviews?: string[];
            audience?: string; high_cutoff?: number; low_cutoff?: number };
 }
@@ -247,7 +247,7 @@ export const api = {
   activity: (): Promise<{ activity: ActivityRow[] }> => fetch(ws("/api/activity")).then(j),
   simulate: (high_cutoff: number, low_cutoff: number): Promise<{ buckets: SimBuckets }> =>
     POST("/api/gate/simulate", { high_cutoff, low_cutoff }),
-  start: (body: { func_id: string; pipeline_id?: string; pipeline?: string; backend?: string; owner?: string; analysis_gate?: string; impl_gate?: string }) =>
+  start: (body: { func_id: string; pipeline_id?: string; pipeline?: string; backend?: string; effort?: string; owner?: string; analysis_gate?: string; impl_gate?: string }) =>
     POST("/api/runs", { owner: _user.name, ...body, workspace_id: activeWs }),
   rerun: (id: string): Promise<{ run_id: string; status: string }> =>
     POST(`/api/runs/${id}/rerun`, { owner: _user.name }),

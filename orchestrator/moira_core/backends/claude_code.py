@@ -22,7 +22,7 @@ import subprocess
 import threading
 from typing import Any
 
-from ..models import BackendResult, Cost, Node
+from ..models import BackendResult, Cost, EFFORT_LEVELS, Node
 from . import contract
 
 
@@ -215,6 +215,10 @@ class ClaudeCodeBackend:
         # per-node model override (enables cross-model verification / strong-model planning)
         if node.model and node.model not in ("", "mock"):
             cmd += ["--model", node.model]
+        # per-node reasoning-effort tier (allow-list guards junk; the CLI downgrades a
+        # level the chosen model doesn't support). "" / unknown -> no flag (backend default).
+        if node.effort in EFFORT_LEVELS:
+            cmd += ["--effort", node.effort]
         # reasoning roles run tool-light (no edits) so they stay focused + cheap;
         # skill runs MUST keep tools (the skill writes files into the repo)
         if role in self.REASONING_ROLES and not is_skill:

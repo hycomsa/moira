@@ -14,6 +14,13 @@ const BACKENDS = [
   { id: "claude_code", title: "Claude Code", sub: "real frontier coding agent ($)" },
   { id: "litellm", title: "LiteLLM", sub: "model-agnostic / local (no lock-in)" },
 ];
+// reasoning-effort tiers (Claude Code `--effort` / LiteLLM `reasoning_effort`).
+// "" = backend default; the run-level pick overrides each node's own effort.
+const EFFORTS = [
+  { id: "", label: "Backend default" },
+  { id: "low", label: "low" }, { id: "medium", label: "medium" },
+  { id: "high", label: "high" }, { id: "xhigh", label: "xhigh" }, { id: "max", label: "max" },
+];
 
 export function ProjectWizard({ onClose, onStarted }: {
   onClose: () => void; onStarted: (runId: string) => void;
@@ -24,6 +31,7 @@ export function ProjectWizard({ onClose, onStarted }: {
   const [fn, setFn] = useState<FuncSpec | null>(null);
   const [pipe, setPipe] = useState<PipelineDef | null>(null);
   const [backend, setBackend] = useState(getUser().backend);
+  const [effort, setEffort] = useState("");   // "" = backend default
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -38,7 +46,7 @@ export function ProjectWizard({ onClose, onStarted }: {
     if (!fn || !pipe) return;
     setBusy(true); setErr("");
     try {
-      const res = await api.start({ func_id: fn.id, pipeline_id: pipe.id, backend });
+      const res = await api.start({ func_id: fn.id, pipeline_id: pipe.id, backend, effort });
       onStarted(res.run_id);
     } catch (e) { setErr(String((e as Error)?.message || e)); setBusy(false); }
   };
@@ -113,6 +121,12 @@ export function ProjectWizard({ onClose, onStarted }: {
               </div>
             ))}
           </div>
+          <div className="field" style={{ marginTop: 14 }}>
+            <label>Reasoning effort <span className="muted">— Claude Code / LiteLLM only; Mock ignores it</span></label>
+            <select value={effort} onChange={(e) => setEffort(e.target.value)} disabled={backend === "mock"}>
+              {EFFORTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
@@ -124,6 +138,7 @@ export function ProjectWizard({ onClose, onStarted }: {
           <div className="rev-row"><span className="rev-k">Pipeline</span><span className="rev-v">{pipe?.name} ({pipe?.nodes.length} steps)</span></div>
           <div className="rev-row"><span className="rev-k">Gates</span><span className="rev-v">{gates.length ? gates.map((g) => `${g.name} (${g.gate?.mode})`).join(", ") : "none"}</span></div>
           <div className="rev-row"><span className="rev-k">Backend</span><span className="rev-v">{BACKENDS.find((b) => b.id === backend)?.title}</span></div>
+          <div className="rev-row"><span className="rev-k">Effort</span><span className="rev-v">{EFFORTS.find((e) => e.id === effort)?.label}</span></div>
           {fn && fn.lineage.filter((l) => l !== fn.id).length > 0 && (
             <div className="preflight-orbit">
               <div className="review-label" style={{ marginTop: 10 }}>Context in the model's orbit (pre-flight)</div>

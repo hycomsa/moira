@@ -377,7 +377,8 @@ class AISdlcRepo:
                 # same as Discovery — writes artifacts into the AI SDLC repo (run cwd = repo).
                 nodes.append(Node(
                     id=nd["id"], name=nd.get("name", nd["skill"]), type=NodeType.PRODUCER,
-                    backend="claude_code", model=nd.get("model", ""), role="ba-skill", skill=nd["skill"],
+                    backend="claude_code", model=nd.get("model", ""), effort=nd.get("effort", ""),
+                    role="ba-skill", skill=nd["skill"],
                     skill_input=nd.get("input", ""), prompt_extra=nd.get("elaboration", ""),
                     spec_ref=nd.get("spec_ref") or func_ref,
                     depends_on=deps, max_retries=nd.get("max_retries", 1),
@@ -393,6 +394,7 @@ class AISdlcRepo:
                     type=ntype, role=role,
                     backend=nd.get("backend") or (agent or {}).get("backend", "mock"),
                     model=nd.get("model") or (agent or {}).get("model", ""),
+                    effort=nd.get("effort") or (agent or {}).get("effort", ""),
                     spec_ref=nd.get("spec_ref") or func_ref,
                     max_retries=nd.get("max_retries", 2), depends_on=deps,
                     timeout=nd.get("timeout"), max_turns=nd.get("max_turns"),

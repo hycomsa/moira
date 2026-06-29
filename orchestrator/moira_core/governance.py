@@ -84,7 +84,7 @@ def validate_pack(pack: dict[str, Any]) -> list[str]:
 
 
 def compile_pack(pack: dict[str, Any], after: list[str] | None = None,
-                 model: str = "") -> list[Node]:
+                 model: str = "", effort: str = "") -> list[Node]:
     """Compile a pack into pipeline nodes the engine/durable-runner already executes:
 
     - each deterministic check -> an AUTO_CHECK node (built_in -> check_kind,
@@ -121,7 +121,7 @@ def compile_pack(pack: dict[str, Any], after: list[str] | None = None,
         refs = c.get("references") or []
         nodes.append(Node(
             id=nid, name=c.get("name", c["id"]), type=NodeType.PRODUCER,
-            backend="claude_code", model=model or c.get("model", ""),
+            backend="claude_code", model=model or c.get("model", ""), effort=effort,
             role="compliance-verifier", spec_ref=", ".join(refs),
             depends_on=list(after), max_retries=1))
         check_ids.append(nid)
@@ -134,7 +134,7 @@ def compile_pack(pack: dict[str, Any], after: list[str] | None = None,
     return nodes
 
 
-def attach_pack(pipeline, pack: dict[str, Any], model: str = "") -> list[str]:
+def attach_pack(pipeline, pack: dict[str, Any], model: str = "", effort: str = "") -> list[str]:
     """Append a pack's compiled nodes so governance runs AFTER all existing work.
 
     The host pipeline may rely on implicit linear ordering (no explicit depends_on).
@@ -148,7 +148,7 @@ def attach_pack(pipeline, pack: dict[str, Any], model: str = "") -> list[str]:
         n.depends_on = list(deps.get(n.id, []))
     referenced = {d for preds in deps.values() for d in preds}
     terminals = [n.id for n in pipeline.nodes if n.id not in referenced]
-    nodes = compile_pack(pack, after=terminals, model=model)
+    nodes = compile_pack(pack, after=terminals, model=model, effort=effort)
     pipeline.nodes.extend(nodes)
     return [n.id for n in nodes]
 

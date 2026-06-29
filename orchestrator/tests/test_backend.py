@@ -179,6 +179,27 @@ class TestSkillInlining(unittest.TestCase):
         self.assertIn("/ba@shape-intent-spec driver onboarding", p)
 
 
+class TestEffortFlag(unittest.TestCase):
+    """node.effort -> `--effort <level>` on the claude argv (guarded by allow-list)."""
+
+    def _cmd(self, effort):
+        from moira_core.models import Node, NodeType
+        node = Node(id="impl", name="impl", type=NodeType.PRODUCER, backend="claude_code",
+                    role="requirements-analyst", spec_ref="FUNC-X", effort=effort)
+        return B()._build_cmd(node, {"spec_text": "spec"})
+
+    def test_effort_flag_added_when_set(self):
+        cmd = self._cmd("high")
+        self.assertIn("--effort", cmd)
+        self.assertEqual(cmd[cmd.index("--effort") + 1], "high")
+
+    def test_no_effort_flag_when_empty(self):
+        self.assertNotIn("--effort", self._cmd(""))
+
+    def test_no_effort_flag_for_unknown_value(self):
+        self.assertNotIn("--effort", self._cmd("turbo"))  # allow-list guard
+
+
 class TestStreamReduce(unittest.TestCase):
     """stream-json NDJSON → live records + final result envelope."""
 

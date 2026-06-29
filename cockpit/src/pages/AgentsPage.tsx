@@ -11,9 +11,10 @@ const CAT_COLOR: Record<string, string> = {
 };
 const BLANK: AgentDef = {
   id: "", name: "", type: "producer", category: "analysis", role: "",
-  backend: "mock", model: "", description: "", tools_policy: "reasoning",
+  backend: "mock", model: "", effort: "", description: "", tools_policy: "reasoning",
   system_prompt: "", skill_refs: [],
 };
+const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"];
 
 export function AgentsPage({ focusAgent, onFocusConsumed }: {
   focusAgent?: string | null;
@@ -165,6 +166,11 @@ export function AgentsPage({ focusAgent, onFocusConsumed }: {
               </select>
             </label>
             <label>Model (optional) <Help text="Model hint, e.g. opus or ollama/qwen2.5-coder. Empty = backend default. Lets you wire a specific model per agent (cross-model pipelines)." /><input value={editing.model} onChange={(e) => setEditing({ ...editing, model: e.target.value })} placeholder="e.g. ollama/qwen2.5-coder" /></label>
+            <label>Reasoning effort <Help text="How hard the model thinks when running this agent. Empty = backend default. Applied via --effort (claude_code) and reasoning_effort (litellm); the CLI downgrades a level the chosen model doesn't support. A run or per-node override beats this default." />
+              <select value={editing.effort || ""} onChange={(e) => setEditing({ ...editing, effort: e.target.value })}>
+                {EFFORTS.map((o) => <option key={o} value={o}>{o || "backend default"}</option>)}
+              </select>
+            </label>
             <label>Tools policy <Help text="Intended tool access: reasoning = tool-light (analysis/review), coding = full read/write/run. Advisory metadata today — the effective tool profile is derived from the agent's role." />
               <select value={editing.tools_policy} onChange={(e) => setEditing({ ...editing, tools_policy: e.target.value })}>
                 <option value="reasoning">reasoning (tool-light)</option><option value="coding">coding (full tools)</option>
