@@ -54,14 +54,18 @@ class LiteLLMBackend:
             return BackendResult(ok=False, error="litellm not installed "
                                  "(pip install 'moira-orchestrator[backends]')")
         model = node.model if node.model and node.model != "mock" else self.default_model
+        user = contract.build_stage_prompt(
+            role=node.role or node.id, spec_ref=node.spec_ref,
+            spec_text=context.get("spec_text", ""),
+            upstream=context.get("upstream", {}),
+            feedback=context.get("feedback", {}).get(node.id, ""),
+        )
+        sp = (node.system_prompt or "").strip()
+        if sp:
+            user += f"\n\n=== AGENT INSTRUCTIONS (from this agent's definition) ===\n{sp}"
         messages = [
             {"role": "system", "content": contract.SYSTEM},
-            {"role": "user", "content": contract.build_stage_prompt(
-                role=node.role or node.id, spec_ref=node.spec_ref,
-                spec_text=context.get("spec_text", ""),
-                upstream=context.get("upstream", {}),
-                feedback=context.get("feedback", {}).get(node.id, ""),
-            )},
+            {"role": "user", "content": user},
         ]
         # per-node reasoning-effort tier (OpenAI-style; litellm maps it per provider).
         # allow-list guards junk; "" / unknown -> omit the kwarg (provider default).

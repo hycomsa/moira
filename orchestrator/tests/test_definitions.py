@@ -113,5 +113,37 @@ class TestEffortField(unittest.TestCase):
         self.assertTrue(all(n.effort == "" for n in pipe.nodes if n.type.value == "gate"))
 
 
+class TestAgentSystemPromptField(unittest.TestCase):
+    """`system_prompt` defined on an agent flows into the Node (resolved like model/effort)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.repo = AISdlcRepo(self.tmp)
+        (Path(self.tmp) / ".ai" / "context").mkdir(parents=True)
+
+    def test_node_default_empty_and_roundtrips(self):
+        from moira_core.models import Node, NodeType
+        self.assertEqual(Node(id="n", name="n", type=NodeType.PRODUCER).system_prompt, "")
+        n = Node(id="n", name="n", type=NodeType.PRODUCER, system_prompt="X")
+        self.assertEqual(n.to_dict()["system_prompt"], "X")
+        self.assertEqual(Node.from_dict(n.to_dict()).system_prompt, "X")
+
+    def test_build_pipeline_inherits_agent_system_prompt(self):
+        self.repo.save_agent({"id": "coder", "name": "Coder", "role": "code-generator",
+                              "backend": "claude_code", "system_prompt": "Follow the house style."})
+        self.repo.save_pipeline_def({"id": "p", "name": "P", "nodes": [
+            {"id": "implement", "agent": "coder"}]})
+        pipe = self.repo.build_pipeline(self.repo.get_pipeline_def("p"), func_ref="F")
+        self.assertEqual(pipe.nodes[0].system_prompt, "Follow the house style.")
+
+    def test_node_key_overrides_agent_system_prompt(self):
+        self.repo.save_agent({"id": "coder", "name": "Coder", "role": "code-generator",
+                              "backend": "claude_code", "system_prompt": "agent default"})
+        self.repo.save_pipeline_def({"id": "p", "name": "P", "nodes": [
+            {"id": "implement", "agent": "coder", "system_prompt": "node override"}]})
+        pipe = self.repo.build_pipeline(self.repo.get_pipeline_def("p"), func_ref="F")
+        self.assertEqual(pipe.nodes[0].system_prompt, "node override")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -48,8 +48,12 @@ governance gate e2e) is automated and green.
 
 9. **Agent field help tooltips**
    - Open an agent's editor → each field label has a **"?"** icon; hover it.
-   - Expect: a tooltip explains the field. Note `tools_policy` and `skill_refs` are described as **advisory** (the agent's `role` is what actually drives tool access / budget / behaviour).
+   - Expect: a tooltip explains the field. Note `tools_policy` and `skill_refs` remain **advisory** (the agent's `role` is what actually drives tool access / budget / behaviour); `system_prompt`, however, **is** applied — see item 11.
 
 10. **Model effort reaches the `claude` CLI** (needs a real `claude` binary on PATH)
     - Guided run → step 2 (Backend): pick **Claude Code**, set **Reasoning effort = high**, start a run.
     - Expect (with `MOIRA_DEBUG=1`): the run's live log shows a `debug` record whose rendered command contains `--effort high`. The Agents editor also exposes a per-agent **Reasoning effort** default; a run/per-node value overrides it. (Levels low→max; the CLI downgrades a level the chosen model doesn't support, e.g. `xhigh`→`high` on Opus 4.6.)
+
+11. **Agent `system_prompt` reaches the final prompt** (needs a real `claude` binary on PATH)
+    - Agents editor → set an agent's **System prompt** to something recognizable (e.g. "Always cite the ADR."); use that agent in a pipeline node and start a run with **Claude Code** + `MOIRA_DEBUG=1`.
+    - Expect: the `debug` record's rendered command shows the `-p` task prompt **ending** with an `=== AGENT INSTRUCTIONS (from this agent's definition) ===` block containing that text. Empty `system_prompt` → no such block (prompt unchanged). A per-node `system_prompt` key overrides the agent default. (Same append happens on the litellm backend, in the user message.)

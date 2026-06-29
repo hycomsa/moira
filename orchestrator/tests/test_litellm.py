@@ -115,6 +115,24 @@ class TestLiteLLMBackend(unittest.TestCase):
         lb.LiteLLMBackend().run(self._node("gpt-4o"), {"spec_text": "s", "upstream": {}})
         self.assertNotIn("reasoning_effort", captured)
 
+    def test_system_prompt_appended_to_user_message(self):
+        captured = {}
+        content = f'{contract.START}{{"output":{{}},"decisions":[]}}{contract.END}'
+        fake = make_fake_litellm(content)
+        orig = fake.completion
+        def spy(model, messages, **kw):
+            captured["messages"] = messages
+            return orig(model, messages, **kw)
+        fake.completion = spy
+        lb.litellm = None  # reset; set below
+        lb.litellm = fake
+        node = Node(id="a", name="A", type=NodeType.PRODUCER, role="r",
+                    backend="litellm", model="gpt-4o", system_prompt="Be terse.")
+        lb.LiteLLMBackend().run(node, {"spec_text": "s", "upstream": {}})
+        user = captured["messages"][-1]["content"]
+        self.assertIn("AGENT INSTRUCTIONS", user)
+        self.assertIn("Be terse.", user)
+
     def test_model_routing_uses_node_model(self):
         captured = {}
         content = f'{contract.START}{{"output":{{}},"decisions":[]}}{contract.END}'

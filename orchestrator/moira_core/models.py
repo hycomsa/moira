@@ -162,6 +162,7 @@ class Node:
     model: str = "mock"                    # model hint for the backend
     effort: str = ""                       # reasoning-effort tier ("" = backend default; see EFFORT_LEVELS)
     role: str = ""                         # e.g. requirements-analyst, code-generator
+    system_prompt: str = ""                # optional per-agent instructions appended to the task prompt
     spec_ref: str = ""                     # FUNC/INT/REQ section this node works on
     gate: Optional[GateConfig] = None      # only for GATE nodes
     on_reject_goto: Optional[str] = None   # node id to return to on REJECT
@@ -181,7 +182,7 @@ class Node:
         return {
             "id": self.id, "name": self.name, "type": self.type.value,
             "backend": self.backend, "model": self.model, "effort": self.effort,
-            "role": self.role,
+            "role": self.role, "system_prompt": self.system_prompt,
             "spec_ref": self.spec_ref,
             "gate": self.gate.to_dict() if self.gate else None,
             "on_reject_goto": self.on_reject_goto, "max_retries": self.max_retries,
@@ -196,7 +197,8 @@ class Node:
             id=d["id"], name=d["name"], type=NodeType(d["type"]),
             backend=d.get("backend", "mock"), model=d.get("model", "mock"),
             effort=d.get("effort", ""),
-            role=d.get("role", ""), spec_ref=d.get("spec_ref", ""),
+            role=d.get("role", ""), system_prompt=d.get("system_prompt", ""),
+            spec_ref=d.get("spec_ref", ""),
             gate=GateConfig.from_dict(d["gate"]) if d.get("gate") else None,
             on_reject_goto=d.get("on_reject_goto"), max_retries=d.get("max_retries", 2),
             depends_on=d.get("depends_on") or [], check_cmd=d.get("check_cmd", ""),

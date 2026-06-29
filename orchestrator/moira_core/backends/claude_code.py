@@ -137,6 +137,14 @@ class ClaudeCodeBackend:
         return text.strip() or None
 
     def _build_prompt(self, node: Node, context: dict[str, Any]) -> str:
+        """The stage/eval/skill prompt, with any per-agent system_prompt appended at the end."""
+        prompt = self._base_prompt(node, context)
+        sp = (node.system_prompt or "").strip()
+        if sp:
+            prompt += f"\n\n=== AGENT INSTRUCTIONS (from this agent's definition) ===\n{sp}"
+        return prompt
+
+    def _base_prompt(self, node: Node, context: dict[str, Any]) -> str:
         if (node.role in self.EVAL_ROLES) or context.get("eval_kind"):
             # LLM-as-judge: build a scorecard prompt; the contract still wraps the
             # response so the scorecard lands in `output` (see evals.build_eval_prompt).

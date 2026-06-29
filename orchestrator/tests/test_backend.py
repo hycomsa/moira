@@ -200,6 +200,30 @@ class TestEffortFlag(unittest.TestCase):
         self.assertNotIn("--effort", self._cmd("turbo"))  # allow-list guard
 
 
+class TestAgentSystemPrompt(unittest.TestCase):
+    """node.system_prompt is appended at the END of the task prompt, every branch."""
+
+    def _node(self, **kw):
+        from moira_core.models import Node, NodeType
+        kw.setdefault("role", "backend-developer")
+        return Node(id="impl", name="impl", type=NodeType.PRODUCER, backend="claude_code",
+                    spec_ref="FUNC-X", **kw)
+
+    def test_appended_when_set(self):
+        p = B()._build_prompt(self._node(system_prompt="Always cite the ADR."), {"spec_text": "spec"})
+        self.assertIn("AGENT INSTRUCTIONS", p)
+        self.assertTrue(p.rstrip().endswith("Always cite the ADR."))
+
+    def test_absent_when_empty(self):
+        self.assertNotIn("AGENT INSTRUCTIONS", B()._build_prompt(self._node(), {"spec_text": "spec"}))
+
+    def test_appended_in_skill_branch(self):
+        node = self._node(role="ba-skill", skill="ba@x", system_prompt="Note assumptions.")
+        p = B()._build_prompt(node, {"cwd": "/nonexistent"})  # skill branch (slash fallback)
+        self.assertIn("AGENT INSTRUCTIONS", p)
+        self.assertIn("Note assumptions.", p)
+
+
 class TestStreamReduce(unittest.TestCase):
     """stream-json NDJSON → live records + final result envelope."""
 

@@ -395,6 +395,7 @@ class AISdlcRepo:
                     backend=nd.get("backend") or (agent or {}).get("backend", "mock"),
                     model=nd.get("model") or (agent or {}).get("model", ""),
                     effort=nd.get("effort") or (agent or {}).get("effort", ""),
+                    system_prompt=nd.get("system_prompt") or (agent or {}).get("system_prompt", ""),
                     spec_ref=nd.get("spec_ref") or func_ref,
                     max_retries=nd.get("max_retries", 2), depends_on=deps,
                     timeout=nd.get("timeout"), max_turns=nd.get("max_turns"),

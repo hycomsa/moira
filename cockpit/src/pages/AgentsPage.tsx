@@ -177,7 +177,7 @@ export function AgentsPage({ focusAgent, onFocusConsumed }: {
               </select>
             </label>
             <label>Description <Help text="Free text shown on the agent card. Documentation only — no effect on execution." /><textarea value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></label>
-            <label>System prompt (optional) <Help text="Extra instructions added to this agent's prompt to shape its behaviour/voice, on top of what its role provides." /><textarea value={editing.system_prompt} onChange={(e) => setEditing({ ...editing, system_prompt: e.target.value })} /></label>
+            <label>System prompt (optional) <Help text="Extra instructions for this agent, appended to the END of its task prompt (applied on claude_code and litellm) to shape behaviour/voice on top of what the role provides. Empty = none. Unlike tools_policy / skill_refs, this one IS used at run time." /><textarea value={editing.system_prompt} onChange={(e) => setEditing({ ...editing, system_prompt: e.target.value })} /></label>
             <label>Skill refs (comma-separated) <Help text="AI SDLC skills (e.g. ba@shape-func-spec) associated with this agent, for reference. Advisory today — to actually drive a skill in a run, add a skill node in a pipeline." />
               <input value={(editing.skill_refs || []).join(", ")} onChange={(e) => setEditing({ ...editing, skill_refs: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
             </label>
