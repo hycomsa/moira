@@ -34,3 +34,14 @@ governance gate e2e) is automated and green.
 6. **Postgres multi-runner soak**
    - One or more external runners (`moira_runner.py --mode external`) + `MOIRA_PRIMARY=postgres` under sustained / long-running load.
    - Expect: exactly-once execution, lease heartbeat holds long runs, no double-execution. (Conformance + durable-job tests pass on live Postgres; a full soak is unverified.)
+
+## Cockpit UX (interactive — needs a browser; build + render verified headless)
+
+7. **Node → agent definition jump**
+   - Pipelines page → click a producer/verifier node → in the right inspector click **↗ Open definition**.
+   - Expect: navigates to the Agents page with that agent's editor drawer open.
+
+8. **Selection remembered across page switches**
+   - Open a pipeline (and select a node) → switch to another page → back to Pipelines.
+   - Expect: the same pipeline is loaded and the same node re-selected (persisted in `localStorage["moira-ui"]`, survives reload too).
+   - Agents page: type a search, open an agent, switch away and back → the search is restored and the last-opened agent card is highlighted/scrolled into view (the editor stays closed — it only opens via the node→agent jump).

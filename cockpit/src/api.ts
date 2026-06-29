@@ -114,6 +114,18 @@ export const setUser = (u: Partial<UserProfile>) => {
 };
 export const approver = () => `${_user.name} (${_user.persona})`;
 
+// transient UI state remembered across page switches / reloads (last pipeline open,
+// selected node, agents search + last-opened agent). Same localStorage pattern as the
+// user profile. Purely cosmetic — never trusted for anything but restoring the view.
+export interface UiState { pipelineId?: string; pipelineNode?: string; agentQuery?: string; agentId?: string; }
+export const getUiState = (): UiState => {
+  try { return JSON.parse(localStorage.getItem("moira-ui") || "{}"); }
+  catch { return {}; }
+};
+export const setUiState = (patch: Partial<UiState>) => {
+  try { localStorage.setItem("moira-ui", JSON.stringify({ ...getUiState(), ...patch })); } catch { /* */ }
+};
+
 const j = async (r: Response) => {
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();

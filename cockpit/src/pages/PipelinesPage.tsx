@@ -5,7 +5,7 @@ import {
   type Connection, type Node, type Edge, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { api, type AgentDef, type FuncSpec, type PipelineDefRaw, type PipelineNodeDef } from "../api";
+import { api, getUiState, setUiState, type AgentDef, type FuncSpec, type PipelineDefRaw, type PipelineNodeDef } from "../api";
 import { Button } from "../components/ui/Button";
 import { Select } from "../components/ui/Select";
 import { Input } from "../components/ui/Input";
@@ -82,7 +82,7 @@ function layout(defNodes: PipelineNodeDef[]): Record<string, { x: number; y: num
   return pos;
 }
 
-export function PipelinesPage() {
+export function PipelinesPage({ onOpenAgent }: { onOpenAgent?: (id: string) => void } = {}) {
   const [ids, setIds] = useState<string[]>([]);
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [pid, setPid] = useState("");
@@ -134,12 +134,18 @@ export function PipelinesPage() {
       deps.forEach((s) => rfEdges.push(depEdge(s, n.id)));
       if (n.on_reject_goto) rfEdges.push(rejectEdge(n.id, n.on_reject_goto));
     });
-    setNodes(rfNodes); setEdges(rfEdges); setPid(id); setPname(def.name); setSelId(null); setDirty(false);
+    setNodes(rfNodes); setEdges(rfEdges); setPid(id); setPname(def.name); setDirty(false);
+    // restore the previously-selected node if it still exists in this pipeline
+    const savedNode = getUiState().pipelineNode;
+    setSelId(savedNode && rfNodes.some((n) => n.id === savedNode) ? savedNode : null);
+    setUiState({ pipelineId: id });  // remember which pipeline is open across page switches
   }, [agentType, nodeData, setNodes, setEdges]);
 
   const loadList = useCallback(async () => {
     const r = await api.pipelines(); setIds(r.pipelines.map((p) => p.id));
-    const want = new URLSearchParams(window.location.search).get("edit") || r.pipelines[0]?.id;
+    const qparam = new URLSearchParams(window.location.search).get("edit");
+    const saved = getUiState().pipelineId;
+    const want = qparam || (saved && r.pipelines.some((p) => p.id === saved) ? saved : r.pipelines[0]?.id);
     if (want) await loadInto(want);
   }, [loadInto]);
 
@@ -313,7 +319,7 @@ export function PipelinesPage() {
               onInit={setRfi} nodesDraggable elementsSelectable
               onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
               onConnect={onConnect} onEdgeClick={onEdgeClick}
-              onNodeClick={(_, n) => setSelId(n.id)} onPaneClick={() => setSelId(null)}
+              onNodeClick={(_, n) => { setSelId(n.id); setUiState({ pipelineNode: n.id }); }} onPaneClick={() => setSelId(null)}
               deleteKeyCode={["Backspace", "Delete"]} proOptions={{ hideAttribution: true }}
               defaultEdgeOptions={{ type: "smoothstep" }} minZoom={0.3}>
               <Background color="var(--border)" gap={24} size={1.5} />
@@ -348,6 +354,16 @@ export function PipelinesPage() {
                     <select className="cfg-input" value={selProps.agent || ""} onChange={(e) => patch(sel.id, { agent: e.target.value })}>
                       {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
+                    {selProps.agent && onOpenAgent && (
+                      <button type="button"
+                              onClick={() => onOpenAgent(selProps.agent!)}
+                              title="Open this agent's definition on the Agents page"
+                              style={{ marginTop: 6, background: "none", border: "none", padding: 0,
+                                       color: "var(--accent)", cursor: "pointer", font: "inherit",
+                                       fontSize: 12, textAlign: "left" }}>
+                        ↗ Open definition
+                      </button>
+                    )}
                   </div>
                   <div className="cfg-sec">
                     <div className="cfg-label">Model settings</div>

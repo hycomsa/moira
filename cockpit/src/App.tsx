@@ -39,6 +39,7 @@ const initialView = (): View => {
 export function App() {
   const [view, setView] = useState<View>(initialView);
   const [focusRun, setFocusRun] = useState<string | null>(null);
+  const [focusAgent, setFocusAgent] = useState<string | null>(null);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWs, setActiveWs] = useState("default");
@@ -69,6 +70,8 @@ export function App() {
 
   // open a specific run's details from anywhere (e.g. after launching from Discovery)
   const openRun = (id: string) => { setFocusRun(id); setView("runs"); };
+  // jump to an agent's definition from anywhere (e.g. a pipeline node inspector)
+  const openAgent = (id: string) => { setFocusAgent(id); setView("agents"); };
 
   const switchWs = (id: string) => {
     if (id === "__new__") { setShowWizard(true); return; }
@@ -114,8 +117,8 @@ export function App() {
           {view === "overview" && <Overview onNavigate={(v) => setView(v as View)} />}
           {view === "runs" && <RunsPage onDecided={refreshInbox} focusRun={focusRun} />}
           {view === "inbox" && <InboxPage inbox={inbox} onDecided={refreshInbox} onOpenRun={openRun} />}
-          {view === "pipelines" && <PipelinesPage />}
-          {view === "agents" && <AgentsPage />}
+          {view === "pipelines" && <PipelinesPage onOpenAgent={openAgent} />}
+          {view === "agents" && <AgentsPage focusAgent={focusAgent} onFocusConsumed={() => setFocusAgent(null)} />}
           {view === "skills" && <SkillsPage onOpenRun={openRun} />}
           {view === "files" && <FilesPage />}
           {view === "trace" && <TraceabilityPage onOpenRun={openRun} />}

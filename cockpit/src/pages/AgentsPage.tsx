@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, type AgentDef } from "../api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, getUiState, setUiState, type AgentDef } from "../api";
 import { Modal } from "../components/Modal";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -14,10 +14,32 @@ const BLANK: AgentDef = {
   system_prompt: "", skill_refs: [],
 };
 
-export function AgentsPage() {
+export function AgentsPage({ focusAgent, onFocusConsumed }: {
+  focusAgent?: string | null;
+  onFocusConsumed?: () => void;
+} = {}) {
   const [agents, setAgents] = useState<AgentDef[]>([]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(() => getUiState().agentQuery || "");
   const [editing, setEditing] = useState<AgentDef | null>(null);
+  // last agent the user opened — restored (highlight + scroll) on a plain page return.
+  const lastId = useRef(getUiState().agentId || "").current;
+  const didScroll = useRef(false);
+
+  // open an agent's editor when deep-linked from a pipeline node (node→agent jump)
+  useEffect(() => {
+    if (!focusAgent || agents.length === 0) return;
+    const a = agents.find((x) => x.id === focusAgent);
+    if (a) { setEditing({ ...BLANK, ...a }); setUiState({ agentId: a.id }); }
+    onFocusConsumed?.();
+  }, [focusAgent, agents, onFocusConsumed]);
+
+  // remember the search filter across page switches
+  useEffect(() => { setUiState({ agentQuery: q }); }, [q]);
+
+  // scroll the last-opened card into view once, on return
+  const highlightRef = useCallback((el: HTMLDivElement | null) => {
+    if (el && !didScroll.current) { didScroll.current = true; el.scrollIntoView({ block: "center" }); }
+  }, []);
   const [importDir, setImportDir] = useState("");
   const [importing, setImporting] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
@@ -71,8 +93,13 @@ export function AgentsPage() {
           <div className="group-head"><i style={{ background: CAT_COLOR[cat] ?? "#8b949e" }} /> {cat}</div>
           <div className="agent-grid">
             {list.map((a) => (
-              <div className="agent-card" key={a.id} onClick={() => setEditing({ ...BLANK, ...a })}
-                   style={{ borderLeft: `3px solid ${CAT_COLOR[a.category] ?? "var(--border)"}` }}>
+              <div className="agent-card" key={a.id}
+                   ref={a.id === lastId ? highlightRef : undefined}
+                   onClick={() => { setEditing({ ...BLANK, ...a }); setUiState({ agentId: a.id }); }}
+                   style={{
+                     borderLeft: `3px solid ${CAT_COLOR[a.category] ?? "var(--border)"}`,
+                     ...(a.id === lastId ? { boxShadow: "0 0 0 2px var(--accent)" } : {}),
+                   }}>
                 <div className="ac-top">
                   <span className="ac-type" data-t={a.type}>{a.type === "verifier" ? "✓ verifier" : "● producer"}</span>
                   <button className="ac-del" onClick={(e) => { e.stopPropagation(); del(a.id); }}>✕</button>
