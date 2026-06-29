@@ -1075,3 +1075,13 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
 .dc-actions .reject { background: var(--panel2); color: #f85149; border: 1px solid color-mix(in srgb,#f85149 35%,var(--border)); }
 .dc-actions button:active { transform: translateY(1px); }
 .dc-actions button:disabled { opacity: .5; cursor: default; }
+
+/* inline "?" help icon (hover for a native tooltip) */
+.help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 6px;
+  border: 1px solid var(--border); border-radius: 50%;
+  color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1;
+  cursor: help; vertical-align: middle; user-select: none;
+}
+.help:hover { border-color: var(--accent); color: var(--accent); }

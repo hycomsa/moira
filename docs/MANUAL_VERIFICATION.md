@@ -45,3 +45,7 @@ governance gate e2e) is automated and green.
    - Open a pipeline (and select a node) → switch to another page → back to Pipelines.
    - Expect: the same pipeline is loaded and the same node re-selected (persisted in `localStorage["moira-ui"]`, survives reload too).
    - Agents page: type a search, open an agent, switch away and back → the search is restored and the last-opened agent card is highlighted/scrolled into view (the editor stays closed — it only opens via the node→agent jump).
+
+9. **Agent field help tooltips**
+   - Open an agent's editor → each field label has a **"?"** icon; hover it.
+   - Expect: a tooltip explains the field. Note `tools_policy` and `skill_refs` are described as **advisory** (the agent's `role` is what actually drives tool access / budget / behaviour).

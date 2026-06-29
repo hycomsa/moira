@@ -3,6 +3,7 @@ import { api, getUiState, setUiState, type AgentDef } from "../api";
 import { Modal } from "../components/Modal";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
+import { Help } from "../components/ui/Help";
 
 const CAT_COLOR: Record<string, string> = {
   analysis: "#58a6ff", design: "#a371f7", implementation: "#1f6feb",
@@ -146,32 +147,32 @@ export function AgentsPage({ focusAgent, onFocusConsumed }: {
         <div className="drawer-overlay" onClick={() => setEditing(null)}>
           <div className="drawer" onClick={(e) => e.stopPropagation()}>
             <h3>{editing.id ? "Edit agent" : "New agent"}</h3>
-            <label>Name<input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></label>
-            <label>Type
+            <label>Name <Help text="Display name shown in the palette and on pipeline nodes. Cosmetic — the agent is referenced internally by its id." /><input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></label>
+            <label>Type <Help text="producer creates artifacts (specs, code); verifier reviews them and emits findings that feed a gate. Sets the node's kind in a pipeline." />
               <select value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}>
                 <option value="producer">producer</option><option value="verifier">verifier</option>
               </select>
             </label>
-            <label>Category
+            <label>Category <Help text="Grouping for the Agents list / palette only (analysis, design, implementation…). Organizational — does not affect how the agent runs." />
               <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
                 {["analysis", "design", "implementation", "generation", "security", "testing", "general"].map((c) => <option key={c}>{c}</option>)}
               </select>
             </label>
-            <label>Role (backend key)<input value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })} placeholder="e.g. code-generator" /></label>
-            <label>Default backend
+            <label>Role (backend key) <Help text="The key the backend uses to choose behaviour: prompt persona, tool access (reasoning/read-only vs full), time/turn budget tier, eval mode, and Superpowers loading. The most behaviour-defining field — defaults to the agent id." /><input value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })} placeholder="e.g. code-generator" /></label>
+            <label>Default backend <Help text="Engine that runs the agent: mock (offline/tests), claude_code (Claude CLI), litellm (frontier + local routing). Overridable per node or per run." />
               <select value={editing.backend} onChange={(e) => setEditing({ ...editing, backend: e.target.value })}>
                 <option value="mock">mock</option><option value="claude_code">claude_code</option><option value="litellm">litellm</option>
               </select>
             </label>
-            <label>Model (optional)<input value={editing.model} onChange={(e) => setEditing({ ...editing, model: e.target.value })} placeholder="e.g. ollama/qwen2.5-coder" /></label>
-            <label>Tools policy
+            <label>Model (optional) <Help text="Model hint, e.g. opus or ollama/qwen2.5-coder. Empty = backend default. Lets you wire a specific model per agent (cross-model pipelines)." /><input value={editing.model} onChange={(e) => setEditing({ ...editing, model: e.target.value })} placeholder="e.g. ollama/qwen2.5-coder" /></label>
+            <label>Tools policy <Help text="Intended tool access: reasoning = tool-light (analysis/review), coding = full read/write/run. Advisory metadata today — the effective tool profile is derived from the agent's role." />
               <select value={editing.tools_policy} onChange={(e) => setEditing({ ...editing, tools_policy: e.target.value })}>
                 <option value="reasoning">reasoning (tool-light)</option><option value="coding">coding (full tools)</option>
               </select>
             </label>
-            <label>Description<textarea value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></label>
-            <label>System prompt (optional)<textarea value={editing.system_prompt} onChange={(e) => setEditing({ ...editing, system_prompt: e.target.value })} /></label>
-            <label>Skill refs (comma-separated)
+            <label>Description <Help text="Free text shown on the agent card. Documentation only — no effect on execution." /><textarea value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></label>
+            <label>System prompt (optional) <Help text="Extra instructions added to this agent's prompt to shape its behaviour/voice, on top of what its role provides." /><textarea value={editing.system_prompt} onChange={(e) => setEditing({ ...editing, system_prompt: e.target.value })} /></label>
+            <label>Skill refs (comma-separated) <Help text="AI SDLC skills (e.g. ba@shape-func-spec) associated with this agent, for reference. Advisory today — to actually drive a skill in a run, add a skill node in a pipeline." />
               <input value={(editing.skill_refs || []).join(", ")} onChange={(e) => setEditing({ ...editing, skill_refs: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
             </label>
             <div className="drawer-actions">
