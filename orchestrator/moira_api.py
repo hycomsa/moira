@@ -13,6 +13,7 @@ Exposes the same operations as the CLI so the cockpit renders real run data:
   POST /api/runs                 {func_id, owner?, governance_packs?, ...}
   POST /api/runs/{id}/approve    {confirm?}   (approver = authenticated principal)
   POST /api/runs/{id}/reject     {feedback?}
+  POST /api/runs/{id}/retry      {feedback?}  (failed node only — ADR-013)
   POST /api/runs/{id}/cancel     -> request mid-drive cancellation
   POST /api/eval                 -> quality/conformance/compliance scorecard
   GET  /                         -> serves the cockpit frontend (static dir)
@@ -415,6 +416,7 @@ def mobile_inbox(store: Store) -> list[dict]:
             w = next((e for e in reversed(evs) if e["kind"] in ("gate.wait", "node.escalate")), None)
             out.append({"run_id": r["run_id"], "workspace": ws["name"], "pipeline": r["pipeline_id"],
                         "persona": g_in.get("persona", ""), "message": w["message"] if w else "",
+                        "kind": ("failed_node" if w and w["kind"] == "node.escalate" else "gate"),
                         "checks": checks, "changed_files": files,
                         "gate_review": gate_review_for(store, r["run_id"], ws["id"]),
                         **run_metrics(store, r["run_id"])})
@@ -688,6 +690,8 @@ class Handler(BaseHTTPRequestHandler):
                     items.append({"run_id": r["run_id"], "owner": r["owner"],
                                   "message": w["message"] if w else "",
                                   "node_id": w["node_id"] if w else "",
+                                  # gate = re-evaluate (approve/reject); failed_node also offers retry (ADR-013)
+                                  "kind": ("failed_node" if w and w["kind"] == "node.escalate" else "gate"),
                                   "persona": g_in.get("persona", ""),
                                   "audience": g_in.get("audience", "technical"),
                                   "consumes": g_in.get("consumes", []),
@@ -1213,7 +1217,7 @@ class Handler(BaseHTTPRequestHandler):
                 job = enqueue_run_job(store, run_id, ws_id, "drive_run", {"context": ctx})
                 return self._send(201, {"run_id": run_id, "status": "queued",
                                         "job_id": job["job_id"], "waiting_node": None})
-            if path.endswith("/approve") or path.endswith("/reject"):
+            if path.endswith("/approve") or path.endswith("/reject") or path.endswith("/retry"):
                 run_id = path.split("/api/runs/", 1)[1].rsplit("/", 1)[0]
                 run = store.get_run(run_id)
                 if not run:
@@ -1241,12 +1245,29 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "not authorized to decide this gate persona",
                                             "persona": gate_persona,
                                             "subject": getattr(principal, "subject", None)})
+                if path.endswith("/retry"):
+                    # retry re-EXECUTES work — valid only on an escalated failed node;
+                    # a run parked at a real gate re-evaluates via approve/reject (ADR-013)
+                    wnode = None
+                    if waiting_nid:
+                        try:
+                            wnode = pipe.by_id(waiting_nid)
+                        except KeyError:
+                            wnode = None
+                        if wnode is not None and wnode.type == NodeType.GATE:
+                            return self._send(409, {"error": "retry applies to a failed step, "
+                                                             "not a gate — use approve/reject",
+                                                    "run_id": run_id, "node_id": waiting_nid})
                 # approver identity comes from the authenticated principal, NOT the request body
                 approver = getattr(principal, "subject", None) or body.get("by", "human")
                 src = getattr(principal, "auth_source", "request")
                 if path.endswith("/approve"):
                     dec = GateDecision(decision="approve", by=approver,
                                        confirmed=f"{body.get('confirm', 'approved')} (via {src})")
+                elif path.endswith("/retry"):
+                    dec = GateDecision(decision="retry", by=approver,
+                                       feedback=body.get("feedback", ""),
+                                       confirmed=f"human retry (via {src})")
                 else:
                     dec = GateDecision(decision="reject", by=approver,
                                        feedback=body.get("feedback", "rejected"),

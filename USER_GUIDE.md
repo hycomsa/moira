@@ -172,7 +172,12 @@ decision card showing:
 - a **decision note** (recorded in the audit) + **Approve** / **Reject & rework**.
 
 If a step **failed** (e.g. an agent timed out) the run escalates here: the card shows **why** (the
-timeout / retry / escalate events) and an **Open run →** link to the full execution plan.
+timeout / retry / escalate events) and an **Open run →** link to the full execution plan. A failed
+step offers a third decision, **↻ Retry** — it re-runs the step with a fresh attempt budget, and
+your note becomes guidance for the next attempt. **Approve** on a failed step accepts the gap
+explicitly (the run continues *without* that step's output, recorded in the audit); **Reject**
+follows the pipeline's rework edge or ends the run (ADR-013). The same three buttons appear on
+the mobile inbox (`/m`).
 
 When a gate **rejects on its own** (auto mode with escalation off, or a hybrid
 auto-deny), the rework step is not blind: Moira serializes the blocking findings

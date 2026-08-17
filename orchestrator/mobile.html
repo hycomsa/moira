@@ -99,6 +99,7 @@ function card(it){
     </div>
     <textarea placeholder="What did you verify? / feedback for rework"></textarea>
     <div class="acts">
+      ${it.kind==="failed_node"?`<button class="approve" style="background:#1f6feb" onclick="decide(this,'retry')">↻ Retry</button>`:""}
       <button class="approve" onclick="decide(this,'approve')">Approve</button>
       <button class="reject" onclick="decide(this,'reject')">Reject &amp; rework</button>
     </div></div>`;
@@ -112,7 +113,7 @@ async function decide(btn, kind){
   try {
     const body = kind==="approve" ? {by:"mobile", confirm: note||"Approved from mobile"} : {by:"mobile", feedback: note};
     await fetch(`/api/runs/${run}/${kind}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
-    toast(kind==="approve" ? "Approved ✓" : "Sent back for rework");
+    toast(kind==="approve" ? "Approved ✓" : kind==="retry" ? "Retrying the step ↻" : "Sent back for rework");
   } catch(e){ toast("Failed — try again"); }
   busy = false; setTimeout(load, 600);
 }

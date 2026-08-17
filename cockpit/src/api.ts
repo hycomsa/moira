@@ -60,6 +60,7 @@ export interface InboxItem {
   owner: string;
   message: string;
   node_id: string;
+  kind?: "gate" | "failed_node";  // failed_node also offers ↻ Retry (ADR-013)
   persona?: string;
   audience?: string;
   consumes?: string[];
@@ -267,6 +268,8 @@ export const api = {
     POST(`/api/runs/${id}/approve`, { by, confirm }),
   reject: (id: string, by: string, feedback: string) =>
     POST(`/api/runs/${id}/reject`, { by, feedback }),
+  retry: (id: string, by: string, feedback: string) =>
+    POST(`/api/runs/${id}/retry`, { by, feedback }),  // failed node only (ADR-013)
   // Evals & quality harness: an evaluation is itself an audited one-node run.
   evalQuality: (run_id: string, model?: string): Promise<EvalResult> =>
     POST("/api/eval", { owner: _user.name, kind: "quality", run_id, model, workspace_id: activeWs }),

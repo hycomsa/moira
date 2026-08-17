@@ -115,10 +115,25 @@ class Engine:
             except ValueError:
                 return RunResult(run_id, Status.RUNNING)
         node = pipeline.by_id(waiting)
+        if decision.decision == "retry" and node.type == NodeType.GATE:
+            # gates re-EVALUATE (their verifiers' results are what they are);
+            # "retry" re-EXECUTES work, which only makes sense on a failed node
+            raise ValueError("retry applies to an escalated failed node, not a gate")
         self._event(run_id, "gate.decision",
                     f"[{node.name}] {decision.decision} by {decision.by}: {decision.confirmed}", node.id)
         self._finalize_gate(run_id, node, decision)
         deps = pipeline.dep_map()
+
+        if decision.decision == "retry":
+            # QW5/ADR-013: human-requested re-execution of the failed node with a
+            # fresh attempt budget; optional guidance rides the feedback channel
+            state[waiting] = PENDING
+            if decision.feedback:
+                context.setdefault("feedback", {})[waiting] = decision.feedback
+            self._event(run_id, "node.retry.human",
+                        f"[{node.name}] human-requested retry by {decision.by}", node.id)
+            self.store.save_run_state(run_id, state)
+            return self._drive(run_id, pipeline, context, state, should_cancel)
 
         if decision.decision == "reject":
             target = node.on_reject_goto
@@ -135,6 +150,13 @@ class Engine:
             state[waiting] = PENDING  # the gate re-evaluates after rework
             context.setdefault("feedback", {})[target] = decision.feedback
         else:  # approve
+            if node.type != NodeType.GATE:
+                # approving an escalated FAILED node means accepting the gap: it is
+                # marked done with NO output, so downstream runs without its result.
+                # Make that explicit in the trail — never a silent skip (QW5/ADR-013).
+                self._event(run_id, "node.accept_failed",
+                            f"[{node.name}] failed node accepted WITHOUT output by "
+                            f"{decision.by} — downstream proceeds without its result", node.id)
             state[waiting] = DONE
         self.store.save_run_state(run_id, state)
         return self._drive(run_id, pipeline, context, state, should_cancel)

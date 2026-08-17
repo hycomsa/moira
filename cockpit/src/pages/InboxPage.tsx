@@ -57,14 +57,17 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
     return { usd: det.cost.usd, tokens: det.cost.tokens_in + det.cost.tokens_out, duration: dur, model };
   }, [det, audit]);
 
-  const decide = async (kind: "approve" | "reject") => {
+  const decide = async (kind: "approve" | "reject" | "retry") => {
     if (inFlight.current) return;   // synchronous guard: a gate can only be decided once
     inFlight.current = true;
     setBusy(true); setMsg("");
     try {
       if (kind === "approve") await api.approve(it.run_id, approver(), note || "Reviewed and accepted");
+      else if (kind === "retry") await api.retry(it.run_id, approver(), note);
       else await api.reject(it.run_id, approver(), note || "Sent back for rework");
-      setMsg(kind === "approve" ? "✓ Approved — continuing the run…" : "↩ Sent back for rework — re-running the step…");
+      setMsg(kind === "approve" ? "✓ Approved — continuing the run…"
+        : kind === "retry" ? "↻ Retrying the failed step…"
+        : "↩ Sent back for rework — re-running the step…");
       onDecided();
     } catch (e) {
       setMsg("⚠ Action failed: " + String((e as Error)?.message || e));
@@ -166,7 +169,10 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
             </div>
           ))}
           <div className="muted small" style={{ marginTop: 6 }}>
-            The step failed (no output produced). <b>Reject &amp; rework</b> re-runs it; <b>Approve</b> skips past it. Open the run for the full execution plan.
+            The step failed (no output produced). <b>↻ Retry</b> re-runs it — your note becomes
+            guidance for the next attempt. <b>Approve</b> accepts the failure and continues
+            <i> without</i> this step's output. <b>Reject</b> follows the pipeline's rework
+            edge (or ends the run if there is none). Open the run for the full execution plan.
           </div>
         </div>
       )}
@@ -178,6 +184,9 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
                 value={note} onChange={(e) => setNote(e.target.value)} />
       {msg && <div className={"dc-banner " + (msg.startsWith("⚠") ? "warn" : "ok")} style={{ marginTop: 10 }}>{msg}</div>}
       <div className="dc-actions">
+        {it.kind === "failed_node" && (
+          <Button variant="primary" disabled={busy} onClick={() => decide("retry")}>{busy ? "…" : "↻ Retry step"}</Button>
+        )}
         <Button variant="success" disabled={busy} onClick={() => decide("approve")}>{busy ? "…" : "✓ Approve"}</Button>
         <Button variant="danger" disabled={busy} onClick={() => decide("reject")}>{busy ? "…" : "↩ Reject & rework"}</Button>
       </div>

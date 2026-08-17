@@ -83,8 +83,8 @@ def required_action(method: str, path: str) -> str | None:
     # POST / DELETE — mutations
     if path == "/api/runs" or path == "/api/discovery":
         return "launch"
-    if path.endswith("/approve") or path.endswith("/reject"):
-        return "approve_gate"
+    if path.endswith("/approve") or path.endswith("/reject") or path.endswith("/retry"):
+        return "approve_gate"  # retry is the third decision at the same checkpoint (ADR-013)
     if path.endswith("/rerun") or path.endswith("/cancel"):
         return "launch"
     if path.endswith("/report"):
