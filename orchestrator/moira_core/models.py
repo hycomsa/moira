@@ -125,6 +125,10 @@ class GateConfig:
     high_cutoff: float = 0.85             # >= -> auto-accept (hybrid)
     low_cutoff: float = 0.50              # <  -> auto-deny (hybrid)
     escalate_on_blocking: bool = True     # HIGH/CRITICAL finding always escalates to human
+    # Max SYSTEM rejects this gate may issue before the next one is converted
+    # into a human escalation (ADR-010). Human rejects don't consume the budget.
+    # 0 = never auto-reject (first would-be reject escalates). No "unlimited".
+    max_loop: int = 3
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -135,6 +139,8 @@ class GateConfig:
     def from_dict(cls, d: dict[str, Any]) -> "GateConfig":
         d = dict(d)
         d["mode"] = GateMode(d["mode"])
+        if "max_loop" in d:  # tolerate hand-written YAML ("3") — fail here, not mid-run
+            d["max_loop"] = int(d["max_loop"])
         return cls(**d)
 
 

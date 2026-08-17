@@ -152,7 +152,9 @@ export interface PipelineNodeDef {
   depends_on?: string[]; check_cmd?: string;
   backend?: string; model?: string; effort?: string;   // per-node overrides (cross-model wiring)
   gate?: { mode: string; persona?: string; consumes?: string[]; reviews?: string[];
-           audience?: string; high_cutoff?: number; low_cutoff?: number };
+           audience?: string; high_cutoff?: number; low_cutoff?: number;
+           escalate_on_blocking?: boolean;
+           max_loop?: number };  // system-reject budget before forced escalation (ADR-010)
 }
 export interface PipelineDefRaw { id: string; name: string; nodes: PipelineNodeDef[]; }
 

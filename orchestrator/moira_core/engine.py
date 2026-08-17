@@ -537,7 +537,15 @@ class Engine:
         cfg: GateConfig = node.gate or GateConfig()
         vr = context.get("verifier_results", {})
         consumed = [vr[c] for c in cfg.consumes if c in vr] or list(vr.values())
-        decision = evaluate_gate(cfg, consumed)
+        # QW2/ADR-010: the rework-loop counter is DERIVED from the audit trail
+        # (every system reject was sealed there by this method), so the cap
+        # survives resume, sidecar restart and worker handoff — no extra state.
+        system_rejects = sum(
+            1 for rec in self.store.audit_records(run_id)
+            if rec.get("node_id") == node.id
+            for ap in (rec.get("approvals") or [])
+            if ap.get("decision") == "reject" and ap.get("by") == "system")
+        decision = evaluate_gate(cfg, consumed, system_rejects=system_rejects)
         upstream = context.get("upstream", {})
         review = {nid: upstream.get(nid) for nid in cfg.reviews if nid in upstream}
         rec = AuditRecord(

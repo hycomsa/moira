@@ -38,6 +38,10 @@ def validate_pipeline(pipeline: Pipeline) -> list[str]:
             errors.append(f"node '{n.id}' on_reject_goto unknown node '{n.on_reject_goto}'")
         if n.type == NodeType.GATE and n.gate is None:
             errors.append(f"gate node '{n.id}' has no gate config")
+        if n.type == NodeType.GATE and n.gate is not None:
+            ml = n.gate.max_loop
+            if isinstance(ml, bool) or not isinstance(ml, int) or ml < 0:
+                errors.append(f"gate node '{n.id}' max_loop must be a non-negative integer")
 
     if _has_cycle(pipeline.dep_map()):
         errors.append("dependency cycle detected in pipeline")

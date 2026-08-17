@@ -57,8 +57,24 @@ def findings_feedback(verifier_results: list[BackendResult],
     return "Gate rejected — address these findings before the next attempt:\n" + "\n".join(lines)
 
 
-def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult]) -> GateDecision:
-    """Return a GateDecision. 'escalate' means a human must act (queued to Inbox)."""
+def _loop_exhausted(cfg: GateConfig, system_rejects: int) -> GateDecision:
+    """QW2/ADR-010: the gate spent its automatic-reject budget — the would-be
+    reject becomes a human escalation. Never auto-approve, never fail: pausing
+    keeps the governed stance (a human decides what to do with a non-converging
+    rework loop)."""
+    return GateDecision(
+        decision="escalate", by=cfg.persona or "system",
+        confirmed=(f"rework budget exhausted: {system_rejects}/{cfg.max_loop} "
+                   "automatic rejects — human decision required"))
+
+
+def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult],
+                  system_rejects: int = 0) -> GateDecision:
+    """Return a GateDecision. 'escalate' means a human must act (queued to Inbox).
+
+    `system_rejects` = how many rejects THIS gate already issued with by="system"
+    (the caller derives it from the audit trail, so it survives resume/restart —
+    ADR-010). At `cfg.max_loop` the next system reject escalates instead."""
     if cfg.mode == GateMode.OFF:
         return GateDecision(decision="approve", by="system",
                             confirmed="gate disabled (mode=off)")
@@ -76,6 +92,8 @@ def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult]) -> Gat
             return GateDecision(decision="escalate", by=cfg.persona or "system",
                                 confirmed="auto gate escalated: blocking (HIGH/CRITICAL) finding")
         if blocking:
+            if system_rejects >= cfg.max_loop:
+                return _loop_exhausted(cfg, system_rejects)
             return GateDecision(decision="reject", by="system",
                                 confirmed="auto gate: blocking finding, no escalation configured",
                                 feedback=findings_feedback(verifier_results))
@@ -90,6 +108,8 @@ def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult]) -> Gat
         return GateDecision(decision="approve", by="system",
                             confirmed=f"hybrid auto-accept: min_conf {min_conf:.2f} >= {cfg.high_cutoff}")
     if min_conf < cfg.low_cutoff:
+        if system_rejects >= cfg.max_loop:
+            return _loop_exhausted(cfg, system_rejects)
         return GateDecision(decision="reject", by="system",
                             confirmed=f"hybrid auto-deny: min_conf {min_conf:.2f} < {cfg.low_cutoff}",
                             feedback=findings_feedback(verifier_results))

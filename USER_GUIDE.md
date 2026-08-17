@@ -180,6 +180,12 @@ auto-deny), the rework step is not blind: Moira serializes the blocking findings
 feedback the producer sees on its next attempt — the same channel your Inbox
 "Reject & rework" note uses, recorded in the audit (ADR-009).
 
+Automatic rework is also **bounded**: each gate may issue at most **max_loop**
+system rejects (default 3, editable on the gate in the pipeline editor; 0 =
+never auto-reject). When the budget is spent, the gate escalates to its persona
+instead — the card says *"rework budget exhausted"* and you decide: approve,
+redirect, or reject once more (your own rejects are never limited) (ADR-010).
+
 **Client gate**: a business-language approval for a non-technical client (summary +
 requirements, never code). Tune hybrid thresholds under **Settings**.
 

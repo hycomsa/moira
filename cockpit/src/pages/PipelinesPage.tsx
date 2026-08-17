@@ -414,6 +414,15 @@ export function PipelinesPage({ onOpenAgent }: { onOpenAgent?: (id: string) => v
                     <input className="cfg-input" value={selProps.gate?.persona || ""} placeholder="lead-dev / client / ciso"
                       onChange={(e) => patch(sel.id, { gate: { ...selProps.gate, mode: selProps.gate?.mode || "auto", persona: e.target.value } })} />
                   </div>
+                  {(selProps.gate?.mode || "auto") !== "human" && (selProps.gate?.mode || "auto") !== "off" && (
+                    <div className="cfg-sec">
+                      <div className="cfg-label">Max auto-rework loops</div>
+                      <input className="cfg-input" type="number" min={0} step={1}
+                        value={selProps.gate?.max_loop ?? 3}
+                        onChange={(e) => patch(sel.id, { gate: { ...selProps.gate, mode: selProps.gate?.mode || "auto", max_loop: Math.max(0, parseInt(e.target.value || "0", 10) || 0) } })} />
+                      <div className="cfg-sub">system rejects before the gate escalates to a human (0 = never auto-reject)</div>
+                    </div>
+                  )}
                   {selProps.gate?.mode === "hybrid" && (
                     <div className="cfg-sec">
                       <div className="cfg-label">Confidence routing</div>

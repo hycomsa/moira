@@ -16,6 +16,7 @@ project's ADRs; they now live with the code they govern (ADR-005/006 P5 hygiene 
 | [007](ADR-007-governance-packs.md) | Governance packs as enforceable controls (repo-only, deterministic-first) | Accepted (MVP) |
 | [008](ADR-008-api-identity-rbac.md) | API identity (JWT, local/oidc) + default-deny RBAC (5 roles) | Accepted (backend MVP) |
 | [009](ADR-009-gate-rework-feedback.md) | System-generated rework feedback on gate reject (closed quality loop, part 1) | Accepted (implemented) |
+| [010](ADR-010-bounded-rework-loop.md) | Bounded rework loop — `max_loop` caps system rejects, audit-derived counter (closed quality loop, part 2) | Accepted (implemented) |
 
 > `ADR-007-agentic-engineering-workflow` was left in the `ai-sdlc` framework repo —
 > it describes the engineering workflow, not the Moira product, so its ownership is

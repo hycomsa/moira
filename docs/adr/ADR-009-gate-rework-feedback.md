@@ -60,10 +60,9 @@ into `GateDecision.feedback`, reusing the existing delivery channel end-to-end
 
 ### Negative / not addressed here
 
-- The rework loop is still **unbounded** (an auto gate with
-  `escalate_on_blocking=False` can loop while the worker lives). The iteration
-  cap is the next planned change (research QW2) — feedback without a cap is a
-  cost risk, so QW2 should land in the same release.
+- ~~The rework loop is still **unbounded**~~ — resolved by **ADR-010**
+  (`GateConfig.max_loop`, default 3, audit-derived counter): feedback and the
+  cap now land together, as this ADR required.
 - Backend *retry* (`max_retries` on transient failure) remains blind — that is
   research QW3, a separate change.
 - `auto_check` stdout/stderr reaches feedback only through the check's Finding
