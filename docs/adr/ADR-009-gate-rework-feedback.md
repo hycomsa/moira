@@ -63,8 +63,8 @@ into `GateDecision.feedback`, reusing the existing delivery channel end-to-end
 - ~~The rework loop is still **unbounded**~~ — resolved by **ADR-010**
   (`GateConfig.max_loop`, default 3, audit-derived counter): feedback and the
   cap now land together, as this ADR required.
-- Backend *retry* (`max_retries` on transient failure) remains blind — that is
-  research QW3, a separate change.
+- ~~Backend *retry* (`max_retries` on transient failure) remains blind~~ —
+  resolved by **ADR-011** (previous errors in the retry prompt + linear backoff).
 - `auto_check` stdout/stderr reaches feedback only through the check's Finding
   `detail` (tail-capped); full check-output injection is research ST1.
 

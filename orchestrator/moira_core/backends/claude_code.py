@@ -139,6 +139,11 @@ class ClaudeCodeBackend:
     def _build_prompt(self, node: Node, context: dict[str, Any]) -> str:
         """The stage/eval/skill prompt, with any per-agent system_prompt appended at the end."""
         prompt = self._base_prompt(node, context)
+        # QW3/ADR-011: an informed retry — previous attempts' errors, appended
+        # here (the wrapper) so all three prompt shapes (stage/eval/skill) get it.
+        errs = contract.attempt_errors_block(context.get("attempt_errors"))
+        if errs:
+            prompt += f"\n\n{errs}"
         sp = (node.system_prompt or "").strip()
         if sp:
             prompt += f"\n\n=== AGENT INSTRUCTIONS (from this agent's definition) ===\n{sp}"

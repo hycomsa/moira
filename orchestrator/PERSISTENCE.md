@@ -33,6 +33,7 @@ sink is active.
 | `MOIRA_RUNNER_LEASE_SECONDS` | job lease timeout | `300` |
 | `MOIRA_RUNNER_POLL_SECONDS` | runner idle poll interval | `0.5` |
 | `MOIRA_JOB_MAX_ATTEMPTS` | durable job max retry attempts | `3` |
+| `MOIRA_RETRY_BACKOFF` | base seconds of the linear backoff between BACKEND retry attempts within a node (`sleep(min(30, base × failures))`; the retry prompt carries the previous errors — ADR-011) | `2` |
 | **Auth / RBAC (ADR-008)** | | |
 | `MOIRA_AUTH_MODE` | `off` \| `local` \| `oidc` (off ⇒ enforcement disabled) | `off` |
 | `MOIRA_AUTH_SECRET` | HS256 secret for local self-issued tokens | random/process |

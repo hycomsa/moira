@@ -22,6 +22,35 @@ SYSTEM = (
 )
 
 
+# Retry context (QW3/ADR-011): how many previous errors a retry prompt shows,
+# and how much of each survives. Most recent errors matter most — we keep the tail.
+ATTEMPT_ERRORS_SHOWN = 3
+ATTEMPT_ERROR_CAP = 500
+
+
+def attempt_errors_block(errors: list[str] | None) -> str:
+    """Render previous attempts' errors as a prompt section ("" if none).
+
+    Distinct from REVIEWER FEEDBACK on purpose: feedback is a quality judgment
+    about produced work; this is a mechanical failure report about attempts
+    that produced nothing. Backends append it to whatever prompt they built."""
+    if not errors:
+        return ""
+    total = len(errors)
+    shown = errors[-ATTEMPT_ERRORS_SHOWN:]
+    first_no = total - len(shown) + 1
+    lines = []
+    for i, err in enumerate(shown):
+        e = (err or "").strip()
+        if len(e) > ATTEMPT_ERROR_CAP:
+            e = e[:ATTEMPT_ERROR_CAP] + "…"
+        lines.append(f"attempt {first_no + i}: {e}")
+    if total > len(shown):
+        lines.append(f"({total - len(shown)} earlier attempt(s) omitted)")
+    return ("=== PREVIOUS ATTEMPT FAILED (fix the cause, do not repeat it) ===\n"
+            + "\n".join(lines))
+
+
 def build_stage_prompt(role: str, spec_ref: str, spec_text: str,
                        upstream: dict[str, Any], feedback: str = "") -> str:
     fb = f"\n=== REVIEWER FEEDBACK (address this) ===\n{feedback}\n" if feedback else ""

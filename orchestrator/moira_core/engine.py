@@ -42,6 +42,10 @@ from .store import Store  # noqa: F401 — re-exported for back-compat
 log = logging.getLogger("moira.engine")
 
 MAX_PARALLEL = 8
+# Retry pacing (QW3/ADR-011): linear backoff between backend attempts —
+# sleep(min(MAX, BASE * failures_so_far)); never before the first attempt.
+RETRY_BACKOFF_BASE = float(os.environ.get("MOIRA_RETRY_BACKOFF", "2"))
+RETRY_BACKOFF_MAX = 30.0
 PENDING, RUNNING, DONE, WAITING, REJECTED, FAILED = (
     "pending", "running", "succeeded", "waiting_gate", "rejected", "failed")
 
@@ -271,7 +275,15 @@ class Engine:
         errors: list[str] = []
         attempts = node.max_retries + 1
         for attempt in range(1, attempts + 1):
-            result = backend.run(node, context)
+            ctx = context
+            if errors:
+                # QW3/ADR-011: informed retry — the next attempt sees what just
+                # failed (per-attempt shallow copy: the shared context dict is
+                # read concurrently by parallel workers and is never mutated),
+                # paced by a linear backoff so transient failures get air.
+                time.sleep(min(RETRY_BACKOFF_MAX, RETRY_BACKOFF_BASE * len(errors)))
+                ctx = {**context, "attempt_errors": list(errors)}
+            result = backend.run(node, ctx)
             if result.ok:
                 if capture:
                     changes = gitdiff.changes_in(cwd, before, gitdiff.tree_snapshot(cwd))
@@ -500,19 +512,26 @@ class Engine:
             findings=findings, cost=Cost(), ok=True)
 
     def _persist_exec(self, run_id: str, node: Node, ex: dict, context: dict[str, Any]) -> None:
-        attempts = node.max_retries + 1 if node.type != NodeType.AUTO_CHECK else 1
         # node.start is emitted by the drive loop BEFORE execution (live progress)
         for err in ex["errors"]:
             self._event(run_id, "retry", f"[{node.name}] failed: {err}", node.id)
             log.warning("node.retry run=%s node=%s backend=%s err=%s",
                         run_id, node.id, node.backend, err)
         res = ex["result"]
+        # audit fidelity (QW3/ADR-011): retries inject error context into the
+        # prompt, so the sealed input must carry it too — plus the attempt count.
+        rec_input: dict[str, Any] = {
+            "spec_ref": node.spec_ref, "role": node.role,
+            "backend": node.backend, "model": node.model or "(default)",
+            "feedback": context.get("feedback", {}).get(node.id, ""),
+            "attempts": ex["attempts"],
+        }
+        if ex["errors"]:
+            rec_input["attempt_errors"] = [e[:500] for e in ex["errors"]]
         rec = AuditRecord(
             step_id=new_id("step-"), run_id=run_id, node_id=node.id, node_name=node.name,
             owner=self.owner,
-            input={"spec_ref": node.spec_ref, "role": node.role,
-                   "backend": node.backend, "model": node.model or "(default)",
-                   "feedback": context.get("feedback", {}).get(node.id, "")},
+            input=rec_input,
             output=res.output if res else {},
             tools=res.tools_used if res else [],
             decisions=res.decisions if res else [],
@@ -529,7 +548,6 @@ class Engine:
             self._event(run_id, "node.end",
                         f"[{node.name}] ok ({rec.cost.get('usd', 0):.3f} USD, {rec.duration:.2f}s)"
                         if isinstance(rec.cost, dict) else f"[{node.name}] ok", node.id)
-        _ = attempts
 
     # ---- gate execution ---------------------------------------------------- #
     def _run_gate(self, run_id: str, pipeline: Pipeline, node: Node,
