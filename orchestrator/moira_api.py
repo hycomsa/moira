@@ -43,7 +43,7 @@ from moira_core import (  # noqa: E402
     validate_pipeline, AuditRecord, validate_pack, attach_pack, applied_marker,
 )
 from moira_core.gates import simulate_routing  # noqa: E402
-from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend  # noqa: E402
+from moira_core.backends import ClaudeCodeBackend, LiteLLMBackend, probes  # noqa: E402
 from moira_core import tasks as task_model  # noqa: E402
 from moira_core import authn, authz  # noqa: E402
 
@@ -624,6 +624,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "backends": registry().available(),
                                         "repo": REPO, "persistence": persistence, "log": LOG_PATH,
                                         "claude": cc.available(), "version": "0.1",
+                                        # install/login probes per backend (QW4/ADR-012;
+                                        # cached, asymmetric TTL — cheap to poll)
+                                        "probes": probes.all_probes(("claude_code", "litellm", "mock")),
                                         "runner": {"mode": os.environ.get("MOIRA_RUNNER_MODE", "embedded"),
                                                    "embedded_alive": bool(RUNNER_THREAD and RUNNER_THREAD.is_alive()),
                                                    "workers": workers, "jobs": by_job_status},
@@ -1022,6 +1025,14 @@ class Handler(BaseHTTPRequestHandler):
                 errs = validate_pipeline(pipe)
                 if errs:
                     return self._send(400, {"error": "invalid pipeline", "errors": errs})
+                # launch gate (QW4/ADR-012): fail fast on a backend that definitely
+                # cannot run (not installed / logged out) — with a copy-paste fix —
+                # instead of surfacing it minutes later as a failed node after retries.
+                exec_backends = {n.backend for n in pipe.nodes
+                                 if n.type not in (NodeType.GATE, NodeType.AUTO_CHECK)}
+                blockers = probes.launch_blockers(exec_backends)
+                if blockers:
+                    return self._send(503, {"error": "backend not ready", "blockers": blockers})
                 ctx = context_for(func_id, rp)
                 code = ws_code_path(store, ws_id)  # real coding: agents write here (cwd)
                 authoring = any(getattr(n, "skill", "") for n in pipe.nodes)
@@ -1070,6 +1081,9 @@ class Handler(BaseHTTPRequestHandler):
                 # against CRITERIA and returns a scorecard. kind=quality judges a run's
                 # outputs; kind=conformance judges code in code_path vs a FUNC spec.
                 from moira_core.evals import normalize_scorecard
+                blockers = probes.launch_blockers({"claude_code"})  # evals run on claude_code
+                if blockers:
+                    return self._send(503, {"error": "backend not ready", "blockers": blockers})
                 ws_id = body.get("workspace_id", "default")
                 owner = body.get("owner", "tomasz.skonieczny")
                 kind = body.get("kind", "quality")
@@ -1149,6 +1163,9 @@ class Handler(BaseHTTPRequestHandler):
                 # AI SDLC repo (cwd=repo_path), each gated by a human review. Accepts
                 # a single skill OR a chained sequence of steps (A3 discovery pipeline).
                 import re as _re
+                blockers = probes.launch_blockers({"claude_code"})  # skills run on claude_code
+                if blockers:
+                    return self._send(503, {"error": "backend not ready", "blockers": blockers})
                 ws_id = body.get("workspace_id", "default")
                 owner = body.get("owner", "tomasz.skonieczny")
                 steps = body.get("steps")
@@ -1315,6 +1332,7 @@ def main(argv=None) -> int:
     setup_logging()
     recover_orphans()
     ensure_embedded_runner()
+    probes.warm(("claude_code", "litellm"))  # QW4: pre-fill the probe cache off-thread
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     log.info("Moira API on http://127.0.0.1:%s  repo=%s  static=%s  log=%s",
              args.port, REPO, STATIC, LOG_PATH)

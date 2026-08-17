@@ -189,6 +189,13 @@ redirect, or reject once more (your own rejects are never limited) (ADR-010).
 **Client gate**: a business-language approval for a non-technical client (summary +
 requirements, never code). Tune hybrid thresholds under **Settings**.
 
+**Backend readiness**: **Settings → Backends** shows live install/login probes
+(version, login status, and the copy-paste fix command). Starting a run, a
+discovery chain, or an eval on a backend that is definitely unusable (CLI not
+installed / logged out) fails immediately with that fix command instead of
+failing minutes later inside the run; an *unknown* login state never blocks
+(ADR-012).
+
 ## 9. Audit, report & traceability
 
 - Every step writes an **audit record**: input · output · tools · decisions ·

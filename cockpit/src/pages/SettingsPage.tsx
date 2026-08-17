@@ -1,10 +1,28 @@
 import { useEffect, useState } from "react";
-import { api, type SimBuckets } from "../api";
+import { api, type BackendProbe, type SimBuckets } from "../api";
+
+const BACKEND_BLURB: Record<string, string> = {
+  mock: "deterministic (tests/offline demo)",
+  claude_code: "frontier coding/reasoning via the claude CLI under your own login (ADR-004)",
+  litellm: "model-agnostic (frontier + local ollama/*), no vendor lock-in (ADR-003)",
+};
+
+function probeBadge(p: BackendProbe) {
+  if (!p.installed) return { cls: "reject", label: "✗ not installed" };
+  if (p.authenticated === false) return { cls: "reject", label: "✗ not logged in" };
+  if (p.authenticated === true) return { cls: "approve", label: "✓ ready" };
+  return { cls: "escalate", label: "• installed (login unknown)" };
+}
 
 export function SettingsPage() {
   const [high, setHigh] = useState(0.85);
   const [low, setLow] = useState(0.5);
   const [buckets, setBuckets] = useState<SimBuckets | null>(null);
+  const [probes, setProbes] = useState<Record<string, BackendProbe> | null>(null);
+
+  useEffect(() => {
+    api.health().then((h) => setProbes(h.probes ?? null)).catch(() => { /* */ });
+  }, []);
 
   useEffect(() => {
     const h = Math.max(high, low + 0.01);
@@ -51,12 +69,26 @@ export function SettingsPage() {
       </div>
 
       <div className="panel">
-        <h3>Backends</h3>
+        <h3>Backends <span className="muted">· install &amp; login probes</span></h3>
         <ul className="plain">
-          <li><b>mock</b> — deterministic (tests/offline demo)</li>
-          <li><b>claude_code</b> — frontier coding/reasoning via the claude CLI under your own login (ADR-004)</li>
-          <li><b>litellm</b> — model-agnostic (frontier + local ollama/*), no vendor lock-in (ADR-003)</li>
+          {(probes ? Object.values(probes) : []).map((p) => {
+            const b = probeBadge(p);
+            return (
+              <li key={p.backend}>
+                <b>{p.backend}</b>{p.version ? <span className="muted"> v{p.version}</span> : null}
+                {" — "}{BACKEND_BLURB[p.backend] ?? ""}
+                <div className="small">
+                  <span className={b.cls}>{b.label}</span>
+                  {p.detail ? <span className="muted"> · {p.detail}</span> : null}
+                  {p.hint ? <> · fix: <code>{p.hint}</code></> : null}
+                </div>
+              </li>
+            );
+          })}
+          {!probes && <li className="muted">probing backends…</li>}
         </ul>
+        <p className="muted small">A launch on a backend that is definitely unusable (not installed / logged out)
+          fails fast with the fix command; an unknown login state never blocks (ADR-012).</p>
       </div>
     </div>
   );

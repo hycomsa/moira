@@ -212,8 +212,18 @@ export interface FileEntry { name: string; type: "dir" | "file"; size: number; }
 export interface DirListing { root: string; path: string; entries: FileEntry[]; }
 export interface FileContent { path: string; abs: string; binary: boolean; text: string; truncated: boolean; }
 
+export interface BackendProbe {
+  backend: string;
+  installed: boolean;
+  version: string;
+  authenticated: boolean | null;  // null = unknown — never blocks a launch (ADR-012)
+  detail: string;
+  hint: string;                   // copy-paste command that fixes the problem
+}
+
 export const api = {
-  health: (): Promise<{ ok: boolean; backends: string[]; repo: string | null; persistence?: string; claude?: boolean; version?: string }> =>
+  health: (): Promise<{ ok: boolean; backends: string[]; repo: string | null; persistence?: string; claude?: boolean; version?: string;
+                        probes?: Record<string, BackendProbe> }> =>
     fetch(u("/api/health")).then(j),
   workspaces: (): Promise<{ workspaces: Workspace[] }> => fetch(u("/api/workspaces")).then(j),
   createWorkspace: (name: string, repo: string, code?: string) =>
