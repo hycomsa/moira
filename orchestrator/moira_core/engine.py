@@ -411,7 +411,9 @@ class Engine:
         finding = Finding(id=node.id, title=("check passed" if ok else "check FAILED"),
                           severity=sev, confidence=1.0, detail=tail)
         return BackendResult(
-            output={"cmd": cmd, "passed": ok, "output_tail": tail},
+            # "check" marks this result as deterministic — gates.findings_feedback
+            # lists such findings before LLM verifier findings on reject (QW1)
+            output={"check": "shell", "cmd": cmd, "passed": ok, "output_tail": tail},
             tools_used=[f"shell:{shlex.split(cmd)[0] if cmd.strip() else 'true'}"],
             decisions=[f"ran `{cmd}` in {cwd or '.'} -> {'pass' if ok else 'FAIL'}"],
             findings=[finding], cost=Cost(), ok=True,

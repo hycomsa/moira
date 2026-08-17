@@ -14,7 +14,47 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import BackendResult, GateConfig, GateDecision, GateMode
+from .models import BackendResult, GateConfig, GateDecision, GateMode, Severity
+
+# Rework feedback (QW1): how many findings a system reject serializes into
+# GateDecision.feedback, and how much of each finding's detail survives.
+FEEDBACK_MAX_FINDINGS = 5
+FEEDBACK_DETAIL_CAP = 500
+
+_SEV_RANK = {Severity.INFO: 0, Severity.LOW: 1, Severity.MEDIUM: 2,
+             Severity.HIGH: 3, Severity.CRITICAL: 4}
+
+
+def findings_feedback(verifier_results: list[BackendResult],
+                      limit: int = FEEDBACK_MAX_FINDINGS) -> str:
+    """Serialize the findings behind a system reject into producer feedback.
+
+    Deterministic check results (BackendResult.output["check"] — test_exec,
+    ac_coverage, log_hygiene, shell) come before LLM verifier findings: command
+    output is ground truth, LLM findings are advisory. INFO findings are passes,
+    not defects — skipped. The list is capped and details truncated so the
+    feedback stays a digest, not a transcript."""
+    items: list[tuple[int, int, float, Any]] = []
+    for r in verifier_results:
+        deterministic = bool((r.output or {}).get("check"))
+        for f in r.findings:
+            if f.severity == Severity.INFO:
+                continue
+            items.append((0 if deterministic else 1, -_SEV_RANK[f.severity],
+                          f.confidence, f))
+    if not items:
+        return ""
+    items.sort(key=lambda t: t[:3])
+    lines = []
+    for _, _, _, f in items[:limit]:
+        detail = (f.detail or "").strip()
+        if len(detail) > FEEDBACK_DETAIL_CAP:
+            detail = detail[:FEEDBACK_DETAIL_CAP] + "…"
+        lines.append(f"- [{f.severity.value}] {f.title}" + (f" — {detail}" if detail else ""))
+    hidden = len(items) - min(len(items), limit)
+    if hidden:
+        lines.append(f"(+{hidden} more finding(s) not shown)")
+    return "Gate rejected — address these findings before the next attempt:\n" + "\n".join(lines)
 
 
 def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult]) -> GateDecision:
@@ -37,7 +77,8 @@ def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult]) -> Gat
                                 confirmed="auto gate escalated: blocking (HIGH/CRITICAL) finding")
         if blocking:
             return GateDecision(decision="reject", by="system",
-                                confirmed="auto gate: blocking finding, no escalation configured")
+                                confirmed="auto gate: blocking finding, no escalation configured",
+                                feedback=findings_feedback(verifier_results))
         return GateDecision(decision="approve", by="system",
                             confirmed=f"auto gate: no blocking findings (min_conf={min_conf:.2f})")
 
@@ -50,7 +91,8 @@ def evaluate_gate(cfg: GateConfig, verifier_results: list[BackendResult]) -> Gat
                             confirmed=f"hybrid auto-accept: min_conf {min_conf:.2f} >= {cfg.high_cutoff}")
     if min_conf < cfg.low_cutoff:
         return GateDecision(decision="reject", by="system",
-                            confirmed=f"hybrid auto-deny: min_conf {min_conf:.2f} < {cfg.low_cutoff}")
+                            confirmed=f"hybrid auto-deny: min_conf {min_conf:.2f} < {cfg.low_cutoff}",
+                            feedback=findings_feedback(verifier_results))
     return GateDecision(decision="escalate", by=cfg.persona or "system",
                         confirmed=f"hybrid -> human: min_conf {min_conf:.2f} in [{cfg.low_cutoff}, {cfg.high_cutoff})")
 

@@ -174,6 +174,12 @@ decision card showing:
 If a step **failed** (e.g. an agent timed out) the run escalates here: the card shows **why** (the
 timeout / retry / escalate events) and an **Open run →** link to the full execution plan.
 
+When a gate **rejects on its own** (auto mode with escalation off, or a hybrid
+auto-deny), the rework step is not blind: Moira serializes the blocking findings
+(deterministic checks like `test_exec` first, LLM findings after) into the
+feedback the producer sees on its next attempt — the same channel your Inbox
+"Reject & rework" note uses, recorded in the audit (ADR-009).
+
 **Client gate**: a business-language approval for a non-technical client (summary +
 requirements, never code). Tune hybrid thresholds under **Settings**.
 
