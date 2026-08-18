@@ -46,6 +46,11 @@ batch, ADR-009…016).
 - **Security & governance boundaries page** —
   [`docs/SECURITY_BOUNDARIES.md`](docs/SECURITY_BOUNDARIES.md): what is
   guaranteed (with mechanisms) and what is explicitly not.
+- **Real-CLI dogfood of the closed loop** — reproducible harness
+  (`orchestrator/verify_real_testfix_loop.py`) + measured report
+  ([`docs/verification/2026-08-18-closed-loop-dogfood.md`](docs/verification/2026-08-18-closed-loop-dogfood.md)):
+  unattended convergence in 3 evidence-driven iterations, sealed audit chain
+  verified, $1.50 / 131 s on the forced-rework scenario.
 
 ### Changed
 - **LiteLLM has no silent default model** — a node without an explicit model
