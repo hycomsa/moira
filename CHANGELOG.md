@@ -82,7 +82,9 @@ batch, ADR-009…016).
   the audit), with pipeline + id as the second line; the run header gains a
   copy-run-id button; Overview's recent runs show the func too.
 - **Cockpit UX: run list filters** — status chips (all/running/waiting/
-  succeeded/failed) + a text filter matching func/pipeline/id.
+  succeeded/failed) with live counts + a text filter matching func/pipeline/id.
+- **Cockpit UX: Inbox cards carry the FUNC** — each decision card is titled
+  with the func-spec it concerns, like the run list.
 - **Cockpit UX: Inbox aging & cleanup** — decisions are sorted oldest-first
   and each card shows how long it has been waiting (`/api/inbox` returns
   `since`; stale > 7 days highlighted); every card has **✕ Cancel run**, and

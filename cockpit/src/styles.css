@@ -129,6 +129,8 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 .copy-id:hover { color: var(--accent); }
 .inbox-age { font-size: 11px; color: var(--muted); margin-left: 8px; }
 .inbox-age.stale { color: var(--warn, #d29922); }
+.dc-func { color: var(--accent); font-weight: 700; margin-right: 8px; }
+.run-filters .chip-n { margin-left: 5px; font-weight: 700; color: var(--text); }
 .run-row:hover { background: var(--panel2); }
 .run-row.active { background: var(--panel2); outline: 1px solid var(--accent2); }
 .rid { color: var(--text); }

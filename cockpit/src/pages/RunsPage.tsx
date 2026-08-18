@@ -206,12 +206,17 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
         <section className="panel">
           <h3>Runs</h3>
           <div className="run-filters">
-            {(["all", "running", "waiting_gate", "succeeded", "failed"] as const).map((s) => (
-              <button key={s} className={"chip" + (statusFilter === s ? " on" : "")}
-                onClick={() => setStatusFilter(s)}>
-                {s === "waiting_gate" ? "waiting" : s}
-              </button>
-            ))}
+            {(["all", "running", "waiting_gate", "succeeded", "failed"] as const).map((s) => {
+              const n = s === "all" ? runs.length
+                : s === "failed" ? runs.filter((r) => ["failed", "rejected", "cancelled"].includes(r.status)).length
+                : runs.filter((r) => r.status === s).length;
+              return (
+                <button key={s} className={"chip" + (statusFilter === s ? " on" : "")}
+                  onClick={() => setStatusFilter(s)}>
+                  {s === "waiting_gate" ? "waiting" : s}{n > 0 && <b className="chip-n">{n}</b>}
+                </button>
+              );
+            })}
           </div>
           <input className="run-search" placeholder="filter: func / pipeline / id…"
                  value={q} onChange={(e) => setQ(e.target.value)} />

@@ -100,7 +100,10 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
                 title="last LLM conformance (spec ↔ code)">⚖ {Math.round(it.gate_review.conformance.overall * 100)}%</span>
         )}
         <div className="dc-titles">
-          <div className="dc-title">{it.message || "Decision required"}</div>
+          <div className="dc-title">
+            {it.gate_review?.func_id && <span className="dc-func">{it.gate_review.func_id}</span>}
+            {it.message || "Decision required"}
+          </div>
           <div className="dc-sub">{det?.pipeline.name || it.run_id.replace("run-", "")} · <code>{it.run_id.replace("run-", "").slice(0, 10)}</code></div>
         </div>
         {metrics && <Metrics m={metrics} compact />}
