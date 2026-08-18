@@ -37,6 +37,10 @@ class RunStore(Protocol):
                          code_path: str | None = None) -> None: ...
     def list_workspaces(self) -> list[dict[str, Any]]: ...
     def get_workspace(self, ws_id: str) -> Optional[dict[str, Any]]: ...
+    # settings (generic scoped config — cost budgets etc.; ADR-017)
+    def set_setting(self, scope: str, key: str, value: str) -> None: ...
+    def get_setting(self, scope: str, key: str) -> Optional[str]: ...
+    def settings(self, scope: str) -> dict[str, str]: ...
     # runs
     def create_run(self, run_id: str, pipeline_id: str, pipeline_json: dict,
                    owner: str, status: str, workspace_id: str = "default") -> None: ...
@@ -112,6 +116,16 @@ class CompositeStore:
     # ---- reads (primary only) --------------------------------------------- #
     def list_workspaces(self) -> list[dict[str, Any]]:
         return self.primary.list_workspaces()
+
+    # settings live in the primary only — they are configuration, not run evidence
+    def set_setting(self, scope: str, key: str, value: str) -> None:
+        self.primary.set_setting(scope, key, value)
+
+    def get_setting(self, scope: str, key: str) -> Optional[str]:
+        return self.primary.get_setting(scope, key)
+
+    def settings(self, scope: str) -> dict[str, str]:
+        return self.primary.settings(scope)
 
     def get_workspace(self, ws_id: str) -> Optional[dict[str, Any]]:
         return self.primary.get_workspace(ws_id)

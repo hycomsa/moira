@@ -15,6 +15,7 @@
 | Automatic rework/retry loops are bounded and informed | `max_loop` cap (audit-derived counter), findings feedback, retry error context | ADR-009/010/011 |
 | Accepting a failed step is explicit, never silent | `node.accept_failed` event; a distinct human **retry** decision exists | ADR-013 |
 | A launch on a definitely unusable backend fails before any work or spend | install/login probes + 503 blockers with the fix command | ADR-012 |
+| A run/workspace stops spending at its configured USD budget (pause, not kill; continue = raise the budget + retry, both audited) | server-enforced budgets checked before each node batch | ADR-017 |
 | The model that runs is the model configured (litellm) | no silent default model; validation at save/launch | ADR-015 |
 | A timed-out or cancelled CLI is actually terminated, children included | process-group SIGTERM→SIGKILL with verified exit | ADR-016 |
 | Governance-pack checks marked deterministic really block; which pack applied is sealed into the audit | pack compiler + fingerprint (`applied_marker`) | ADR-007 |
@@ -28,7 +29,7 @@
 | **Compliance verdicts** | LLM-based checks (evals, pack `llm` checks) are **qualitative, advisory evidence** — never deterministic proof of regulatory conformance. Deterministic checks block; LLM opinions inform a human. | ADR-007, by design |
 | **Prompt-injection resistance** | Repo artifacts, upstream outputs, and failing check output flow into prompts **without** an untrusted-data framing; a malicious artifact can attempt to steer an agent that runs with `acceptEdits`. | research QW9 |
 | **Execution sandboxing** | Delegated CLIs run as your OS user with your permissions — no container, no seccomp, no filesystem jail. A misbehaving agent can touch anything you can. | not planned for desktop-local |
-| **Cost limits** | Budgets shown in the cockpit live in the browser's localStorage; **nothing server-side stops a run from spending** (loops are bounded by iteration count, not money). | research ST4 |
+| **Mid-node cost overshoot** | Budgets (ADR-017) are checked between node batches — a single in-flight node can exceed the limit by its own cost before the pause lands; there is no per-token metering inside a running backend call. | ADR-017, accepted |
 | **Governance-pack override authority** | `override.allowed_personas` / `requires_reason` are enforced only indirectly via the gate persona; there is no dedicated, audited override endpoint. | orchestrator README |
 | **Git mirror by default** | The sealed git mirror is **opt-in** (`MOIRA_GIT_EXPORT=1`, default off); without it the only evidence is the local/DB store. | PERSISTENCE.md |
 | **Network exposure** | The API binds `127.0.0.1` only; the mobile inbox works on the same machine. There is no hardened multi-user deployment story yet (no TLS, no reverse-proxy guide). | research ST12 |

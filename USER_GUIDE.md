@@ -191,6 +191,14 @@ never auto-reject). When the budget is spent, the gate escalates to its persona
 instead — the card says *"rework budget exhausted"* and you decide: approve,
 redirect, or reject once more (your own rejects are never limited) (ADR-010).
 
+**Cost budgets (server-enforced)**: set a monthly workspace budget in
+**Overview → Spend** (and optionally a default per-run cap, or `budget_usd` on
+a single launch). The engine checks spend against the sealed audit **before
+each step** and, when exceeded, **pauses** the run — the Inbox shows a 💸
+budget card. To continue: raise the budget, then **↻ Retry**; both actions are
+attributable (ADR-017). Note the loop below multiplies cost per iteration —
+set a budget before using it routinely.
+
 For a fully autonomous **test-fix loop**, tick *"Feed failing check output to
 rework"* on the gate (pipeline editor): on reject, the rework step's prompt
 additionally gets the raw tail of the failing `AUTO_CHECK` output (the actual

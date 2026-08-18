@@ -104,6 +104,13 @@ CREATE TABLE IF NOT EXISTS cancellations (
     requested_at DOUBLE PRECISION NOT NULL,
     honored_at   DOUBLE PRECISION
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    scope  TEXT NOT NULL,
+    key    TEXT NOT NULL,
+    value  TEXT NOT NULL,
+    PRIMARY KEY (scope, key)
+);
 """
 
 
@@ -135,6 +142,24 @@ class PostgresRunStore:
 
     def get_workspace(self, ws_id: str) -> Optional[dict[str, Any]]:
         return self.conn.execute("SELECT * FROM workspaces WHERE id=%s", (ws_id,)).fetchone()
+
+    # ---- settings (generic scoped config — budgets etc.) ------------------- #
+    def set_setting(self, scope: str, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO settings(scope, key, value) VALUES(%s,%s,%s)"
+            " ON CONFLICT (scope, key) DO UPDATE SET value=EXCLUDED.value",
+            (scope, key, str(value)))
+        self.conn.commit()
+
+    def get_setting(self, scope: str, key: str) -> Optional[str]:
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE scope=%s AND key=%s", (scope, key)).fetchone()
+        return row["value"] if row else None
+
+    def settings(self, scope: str) -> dict[str, str]:
+        rows = self.conn.execute(
+            "SELECT key, value FROM settings WHERE scope=%s", (scope,)).fetchall()
+        return {r["key"]: r["value"] for r in rows}
 
     # ---- runs ------------------------------------------------------------- #
     def create_run(self, run_id: str, pipeline_id: str, pipeline_json: dict,

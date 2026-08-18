@@ -183,8 +183,15 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
       <textarea className="gate-note" placeholder={isClient ? "What you approve / what to change…" : "What did you verify? / feedback for rework…"}
                 value={note} onChange={(e) => setNote(e.target.value)} />
       {msg && <div className={"dc-banner " + (msg.startsWith("⚠") ? "warn" : "ok")} style={{ marginTop: 10 }}>{msg}</div>}
+      {it.kind === "budget" && (
+        <div className="muted small" style={{ marginTop: 8 }}>
+          💸 <b>Budget pause</b> — the run stopped before spending more. Raise the budget
+          (Overview → Spend), then <b>↻ Retry</b> to continue; <b>Approve</b> skips this
+          step; <b>Reject</b> stops or reworks per the pipeline (ADR-017).
+        </div>
+      )}
       <div className="dc-actions">
-        {it.kind === "failed_node" && (
+        {(it.kind === "failed_node" || it.kind === "budget") && (
           <Button variant="primary" disabled={busy} onClick={() => decide("retry")}>{busy ? "…" : "↻ Retry step"}</Button>
         )}
         <Button variant="success" disabled={busy} onClick={() => decide("approve")}>{busy ? "…" : "✓ Approve"}</Button>

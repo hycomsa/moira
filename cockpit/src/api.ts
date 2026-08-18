@@ -60,7 +60,7 @@ export interface InboxItem {
   owner: string;
   message: string;
   node_id: string;
-  kind?: "gate" | "failed_node";  // failed_node also offers ↻ Retry (ADR-013)
+  kind?: "gate" | "failed_node" | "budget";  // failed_node/budget also offer ↻ Retry (ADR-013/017)
   persona?: string;
   audience?: string;
   consumes?: string[];
@@ -207,6 +207,7 @@ export interface EvalResult { run_id: string; status: string; kind: string; scor
 export interface Regulation { id: string; title: string; triggers: string[]; severity_policy: string; }
 export interface SpendRollup {
   total_usd: number; runs: number; month: string; month_usd: number;
+  budget?: { month_usd: number | null; run_usd: number | null };  // server-enforced (ADR-017)
   by_model: { label: string; usd: number }[];
   by_owner: { label: string; usd: number }[];
 }
@@ -280,6 +281,9 @@ export const api = {
     POST("/api/eval", { owner: _user.name, kind: "compliance", references, ...opts, workspace_id: activeWs }),
   regulations: (): Promise<{ regulations: Regulation[] }> => fetch(ws("/api/regulations")).then(j),
   spend: (): Promise<SpendRollup> => fetch(ws("/api/spend")).then(j),
+  // server-enforced budgets (ADR-017): the engine PAUSES a run that exceeds them
+  setWorkspaceBudget: (fields: { month_usd?: number | null; run_usd?: number | null }) =>
+    POST(`/api/workspaces/${encodeURIComponent(activeWs)}/budget`, fields),
   logs: (tail = 400): Promise<{ path: string | null; log: string }> =>
     fetch(u(`/api/logs?tail=${tail}`)).then(j),
   liveRun: (id: string, from = 0): Promise<LiveState> =>
@@ -308,10 +312,5 @@ export interface LiveState {
   elapsed: number; active_node: string | null; status: string;
 }
 
-// per-workspace monthly budget (alert-only v1; kept client-side like the profile)
-export const getBudget = (): number => {
-  try { return Number(localStorage.getItem(`moira-budget-${activeWs}`)) || 0; } catch { return 0; }
-};
-export const setBudget = (usd: number) => {
-  try { localStorage.setItem(`moira-budget-${activeWs}`, String(usd || 0)); } catch { /* */ }
-};
+// NOTE: budgets moved server-side (ADR-017) — see api.setWorkspaceBudget and
+// SpendRollup.budget; the old localStorage copy was alert-only and is gone.

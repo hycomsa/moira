@@ -46,6 +46,14 @@ batch, ADR-009…016).
 - **Security & governance boundaries page** —
   [`docs/SECURITY_BOUNDARIES.md`](docs/SECURITY_BOUNDARIES.md): what is
   guaranteed (with mechanisms) and what is explicitly not.
+- **Server-enforced cost budgets** — per-run (`budget_usd` at launch, or the
+  workspace default) and per-workspace-month USD limits, stored in a new
+  generic `settings` table and checked by the engine **before** each node
+  batch; an exceeded budget **pauses** the run on the next step (Inbox card
+  `kind: budget`, web + mobile) instead of killing it. Continuing is explicit:
+  raise the budget (`POST /api/workspaces/{id}/budget`, RBAC `configure`) and
+  ↻ Retry. `GET /api/spend` reports the budgets; the Overview budget input now
+  reads/writes the server value — the localStorage copy is gone. (ADR-017)
 - **Real-CLI dogfood of the closed loop** — reproducible harness
   (`orchestrator/verify_real_testfix_loop.py`) + measured report
   ([`docs/verification/2026-08-18-closed-loop-dogfood.md`](docs/verification/2026-08-18-closed-loop-dogfood.md)):

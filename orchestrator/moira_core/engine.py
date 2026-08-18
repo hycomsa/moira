@@ -156,8 +156,10 @@ class Engine:
                 # approving an escalated FAILED node means accepting the gap: it is
                 # marked done with NO output, so downstream runs without its result.
                 # Make that explicit in the trail — never a silent skip (QW5/ADR-013).
+                # covers both an escalated FAILED node and a budget-paused step
+                # that never ran (ADR-017) — either way the gap is explicit
                 self._event(run_id, "node.accept_failed",
-                            f"[{node.name}] failed node accepted WITHOUT output by "
+                            f"[{node.name}] step accepted WITHOUT output by "
                             f"{decision.by} — downstream proceeds without its result", node.id)
             state[waiting] = DONE
         self.store.save_run_state(run_id, state)
@@ -197,6 +199,10 @@ class Engine:
             gates = [n for n in ready if n.type == NodeType.GATE]
 
             if workers:
+                # cost budgets (ST4/ADR-017): checked BEFORE spending on the batch
+                exceeded = self._budget_exceeded(run_id)
+                if exceeded:
+                    return self._pause_on_budget(run_id, workers[0], state, exceeded)
                 # mark workers RUNNING + emit node.start BEFORE executing, so the cockpit
                 # shows which node is in progress during a long (e.g. claude) step instead
                 # of a frozen-looking "running" run with no events.
@@ -581,6 +587,50 @@ class Engine:
             self._event(run_id, "node.end",
                         f"[{node.name}] ok ({rec.cost.get('usd', 0):.3f} USD, {rec.duration:.2f}s)"
                         if isinstance(rec.cost, dict) else f"[{node.name}] ok", node.id)
+
+    def _budget_exceeded(self, run_id: str) -> Optional[tuple[str, float, float]]:
+        """First exceeded cost budget as (scope, spent_usd, limit_usd), else None.
+
+        Budgets are governed configuration in the settings store (ST4/ADR-017):
+        `run:<id>/budget_usd` and `workspace:<id>/budget_month_usd`. Absent =
+        no limit. Spend is derived from sealed audit costs — the same numbers
+        the product reports."""
+        rb = self.store.get_setting(f"run:{run_id}", "budget_usd")
+        if rb:  # empty string = budget cleared; absent = never set
+            spent = self.store.run_cost(run_id)["usd"]
+            if spent >= float(rb):
+                return ("run", spent, float(rb))
+        run = self.store.get_run(run_id) or {}
+        ws = run.get("workspace_id")
+        if ws:
+            wb = self.store.get_setting(f"workspace:{ws}", "budget_month_usd")
+            if wb:  # empty string = budget cleared; absent = never set
+                month = time.strftime("%Y-%m")
+                spent = sum(
+                    self.store.run_cost(r["run_id"])["usd"]
+                    for r in self.store.list_runs(ws)
+                    if time.strftime("%Y-%m", time.localtime(r.get("created_at") or 0)) == month)
+                if spent >= float(wb):
+                    return ("workspace month", spent, float(wb))
+        return None
+
+    def _pause_on_budget(self, run_id: str, node: Node, state: dict[str, str],
+                         exceeded: tuple[str, float, float]) -> RunResult:
+        """Stop BEFORE spending more: park the next step like an escalation.
+        Continuing is an explicit governed act — raise the budget (RBAC
+        `configure`), then the ADR-013 `retry` decision re-drives; the check
+        simply passes once the limit is higher. No hidden override state."""
+        scope, spent, limit = exceeded
+        state[node.id] = WAITING
+        self.store.save_run_state(run_id, state)
+        self.store.update_run_status(run_id, Status.WAITING_GATE.value)
+        self._event(run_id, "budget.wait",
+                    f"[{node.name}] paused: {scope} budget exceeded "
+                    f"(${spent:.2f} >= ${limit:.2f}) — raise the budget and retry, "
+                    "approve to skip this step, or reject", node.id)
+        log.warning("budget.wait run=%s node=%s %s spent=%.4f limit=%.4f",
+                    run_id, node.id, scope, spent, limit)
+        return RunResult(run_id, Status.WAITING_GATE, waiting_node=node.id)
 
     def _failing_check_output(self, run_id: str, cfg: GateConfig) -> str:
         """Raw output of the gate's failing consumed checks, derived FROM THE

@@ -23,6 +23,7 @@ project's ADRs; they now live with the code they govern (ADR-005/006 P5 hygiene 
 | [014](ADR-014-check-output-to-rework.md) | Closed test-fix loop — failing check output feeds the rework prompt (opt-in per gate, audit-derived) | Accepted (implemented) |
 | [015](ADR-015-fail-loud-model-identity.md) | Fail-loud model identity — litellm has no silent default model; validation at save/launch | Accepted (implemented) |
 | [016](ADR-016-process-termination.md) | Escalating, verified process termination — group SIGTERM→SIGKILL, reader unblock, visible verdict | Accepted (implemented) |
+| [017](ADR-017-cost-budgets.md) | Server-enforced cost budgets (run + workspace-month) — settings store, pause-not-kill, governed continue | Accepted (implemented) |
 
 > `ADR-007-agentic-engineering-workflow` was left in the `ai-sdlc` framework repo —
 > it describes the engineering workflow, not the Moira product, so its ownership is

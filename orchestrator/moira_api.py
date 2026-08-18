@@ -377,9 +377,14 @@ def spend_rollup(store: Store, ws_id: str) -> dict:
                 month_total += usd
         except Exception:  # noqa: BLE001
             pass
+    # server-enforced budgets (ST4/ADR-017) — None when unset
+    budget = {}
+    for key, name in (("budget_month_usd", "month_usd"), ("budget_run_usd", "run_usd")):
+        v = store.get_setting(f"workspace:{ws_id}", key)
+        budget[name] = float(v) if v else None  # "" = cleared, absent = never set
     return {
         "total_usd": round(total, 4), "runs": runs_n, "month": month,
-        "month_usd": round(month_total, 4),
+        "month_usd": round(month_total, 4), "budget": budget,
         "by_model": [{"label": k, "usd": round(v, 4)} for k, v in by_model.most_common()],
         "by_owner": [{"label": k, "usd": round(v, 4)} for k, v in by_owner.most_common()],
     }
@@ -413,10 +418,13 @@ def mobile_inbox(store: Store) -> list[dict]:
                                    "summary": _summarize_check(rec)})
             files = sum(len((a.get("output") or {}).get("files", [])) for a in recs)
             evs = store.events(r["run_id"])
-            w = next((e for e in reversed(evs) if e["kind"] in ("gate.wait", "node.escalate")), None)
+            w = next((e for e in reversed(evs)
+                      if e["kind"] in ("gate.wait", "node.escalate", "budget.wait")), None)
             out.append({"run_id": r["run_id"], "workspace": ws["name"], "pipeline": r["pipeline_id"],
                         "persona": g_in.get("persona", ""), "message": w["message"] if w else "",
-                        "kind": ("failed_node" if w and w["kind"] == "node.escalate" else "gate"),
+                        "kind": ("failed_node" if w and w["kind"] == "node.escalate"
+                                 else "budget" if w and w["kind"] == "budget.wait"
+                                 else "gate"),
                         "checks": checks, "changed_files": files,
                         "gate_review": gate_review_for(store, r["run_id"], ws["id"]),
                         **run_metrics(store, r["run_id"])})
@@ -682,7 +690,7 @@ class Handler(BaseHTTPRequestHandler):
                 for r in waiting:
                     evs = store.events(r["run_id"])
                     w = next((e for e in reversed(evs)
-                              if e["kind"] in ("gate.wait", "node.escalate")), None)
+                              if e["kind"] in ("gate.wait", "node.escalate", "budget.wait")), None)
                     # surface the artifact the persona must review (client gate wedge)
                     gate_rec = next((a for a in reversed(store.audit_records(r["run_id"]))
                                      if a.get("status") == "waiting_gate"), None)
@@ -690,8 +698,11 @@ class Handler(BaseHTTPRequestHandler):
                     items.append({"run_id": r["run_id"], "owner": r["owner"],
                                   "message": w["message"] if w else "",
                                   "node_id": w["node_id"] if w else "",
-                                  # gate = re-evaluate (approve/reject); failed_node also offers retry (ADR-013)
-                                  "kind": ("failed_node" if w and w["kind"] == "node.escalate" else "gate"),
+                                  # gate = re-evaluate (approve/reject); failed_node and budget
+                                  # also offer retry (ADR-013; budget after raising it — ADR-017)
+                                  "kind": ("failed_node" if w and w["kind"] == "node.escalate"
+                                           else "budget" if w and w["kind"] == "budget.wait"
+                                           else "gate"),
                                   "persona": g_in.get("persona", ""),
                                   "audience": g_in.get("audience", "technical"),
                                   "consumes": g_in.get("consumes", []),
@@ -959,6 +970,30 @@ class Handler(BaseHTTPRequestHandler):
                 ws_id = body.get("id") or _re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-") or "ws"
                 store.create_workspace(ws_id, name, body.get("repo", "."), body.get("code"))
                 return self._send(201, {"workspace": store.get_workspace(ws_id)})
+            if path.startswith("/api/workspaces/") and path.endswith("/budget"):
+                # cost budgets (ST4/ADR-017): governed configuration (RBAC: configure).
+                # month_usd caps the workspace's calendar-month spend; run_usd is the
+                # default per-run cap applied at launch. null/absent value = clear.
+                ws = path[len("/api/workspaces/"):-len("/budget")]
+                if not store.get_workspace(ws):
+                    return self._send(404, {"error": "unknown workspace", "workspace": ws})
+                out = {}
+                for body_key, setting in (("month_usd", "budget_month_usd"),
+                                          ("run_usd", "budget_run_usd")):
+                    if body_key in body:
+                        v = body[body_key]
+                        if v is None or v == "":
+                            store.set_setting(f"workspace:{ws}", setting, "")
+                            out[body_key] = None
+                        else:
+                            try:
+                                store.set_setting(f"workspace:{ws}", setting, str(float(v)))
+                                out[body_key] = float(v)
+                            except (TypeError, ValueError):
+                                return self._send(400, {"error": f"{body_key} must be a number"})
+                log.info("budget set ws=%s %s by %s", ws, out,
+                         getattr(getattr(self, "principal", None), "subject", "local"))
+                return self._send(200, {"workspace": ws, "budget": out})
             if path == "/api/workspaces/clone":
                 import re as _re
                 import subprocess as _sp
@@ -1050,6 +1085,15 @@ class Handler(BaseHTTPRequestHandler):
                 if rp:  # where the git-native task backlog lives (may differ from the code cwd)
                     ctx["backlog_dir"] = os.path.join(rp, task_model.project_config(Path(rp))["tickets_root"])
                 run_id = Engine(store, registry(), owner=owner).create(pipe, ctx, workspace_id=ws_id)
+                # per-run cost budget (ST4/ADR-017): explicit on the request, else the
+                # workspace default; persisted as a setting so it survives resume
+                run_budget = body.get("budget_usd") or store.get_setting(
+                    f"workspace:{ws_id}", "budget_run_usd")
+                if run_budget:
+                    try:
+                        store.set_setting(f"run:{run_id}", "budget_usd", str(float(run_budget)))
+                    except (TypeError, ValueError):
+                        pass  # a junk value must not block the launch — no budget then
                 ctx["live_path"] = live_path_for(run_id)
                 # stamp which governance pack(s) applied into the sealed audit (id+version+hash)
                 for pack in applied_packs:

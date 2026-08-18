@@ -107,6 +107,15 @@ CREATE TABLE IF NOT EXISTS cancellations (
     requested_at REAL NOT NULL,
     honored_at   REAL
 );
+
+-- generic scoped configuration (ST4/ADR-017: cost budgets; future config too).
+-- scope examples: "workspace:<id>", "run:<run_id>"
+CREATE TABLE IF NOT EXISTS settings (
+    scope  TEXT NOT NULL,
+    key    TEXT NOT NULL,
+    value  TEXT NOT NULL,
+    PRIMARY KEY (scope, key)
+);
 """
 
 
@@ -146,6 +155,23 @@ class Store:
     def get_workspace(self, ws_id: str) -> Optional[dict[str, Any]]:
         row = self.conn.execute("SELECT * FROM workspaces WHERE id=?", (ws_id,)).fetchone()
         return dict(row) if row else None
+
+    # ---- settings (generic scoped config — budgets etc.) ------------------- #
+    def set_setting(self, scope: str, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings(scope, key, value) VALUES(?,?,?)",
+            (scope, key, str(value)))
+        self.conn.commit()
+
+    def get_setting(self, scope: str, key: str) -> Optional[str]:
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE scope=? AND key=?", (scope, key)).fetchone()
+        return row["value"] if row else None
+
+    def settings(self, scope: str) -> dict[str, str]:
+        rows = self.conn.execute(
+            "SELECT key, value FROM settings WHERE scope=?", (scope,)).fetchall()
+        return {r["key"]: r["value"] for r in rows}
 
     # ---- runs -------------------------------------------------------------- #
     def create_run(self, run_id: str, pipeline_id: str, pipeline_json: dict,

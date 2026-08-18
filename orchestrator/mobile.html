@@ -99,7 +99,7 @@ function card(it){
     </div>
     <textarea placeholder="What did you verify? / feedback for rework"></textarea>
     <div class="acts">
-      ${it.kind==="failed_node"?`<button class="approve" style="background:#1f6feb" onclick="decide(this,'retry')">↻ Retry</button>`:""}
+      ${(it.kind==="failed_node"||it.kind==="budget")?`<button class="approve" style="background:#1f6feb" onclick="decide(this,'retry')">↻ Retry</button>`:""}
       <button class="approve" onclick="decide(this,'approve')">Approve</button>
       <button class="reject" onclick="decide(this,'reject')">Reject &amp; rework</button>
     </div></div>`;

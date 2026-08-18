@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, getBudget, setBudget, type ActivityRow, type InboxItem, type RunSummary, type SpendRollup, type Stats, type TraceFunc } from "../api";
+import { api, type ActivityRow, type InboxItem, type RunSummary, type SpendRollup, type Stats, type TraceFunc } from "../api";
 import { Metrics, fmtDur, fmtTokens } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
 
@@ -39,7 +39,8 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [counts, setCounts] = useState<{ agents: number; pipelines: number }>({ agents: 0, pipelines: 0 });
   const [spend, setSpend] = useState<SpendRollup | null>(null);
-  const [budget, setBudgetState] = useState<number>(getBudget());
+  // server-enforced monthly budget (ADR-017) — the engine pauses runs beyond it
+  const [budget, setBudgetState] = useState<number>(0);
   const [funcs, setFuncs] = useState<TraceFunc[]>([]);
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
       try {
         const [s, r, i, a, sp] = await Promise.all([api.stats(), api.runs(), api.inbox(), api.activity(), api.spend()]);
         setStats(s); setRuns(r.runs); setInbox(i.inbox); setActivity(a.activity); setSpend(sp);
+        setBudgetState(sp.budget?.month_usd ?? 0);
       } catch { /* sidecar starting */ }
     };
     load();
@@ -236,9 +238,13 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
                 <div className="spend-top">
                   <div><div className="spend-v">${spend.month_usd}</div><div className="spend-l">this month</div></div>
                   <div className="spend-budget">
-                    <label className="spend-blabel">budget/mo $
+                    <label className="spend-blabel" title="Server-enforced: the engine pauses a run once the workspace's monthly spend exceeds this (ADR-017)">budget/mo $
                       <input type="number" min={0} step={1} value={budget || ""}
-                        onChange={(e) => { const v = Number(e.target.value) || 0; setBudgetState(v); setBudget(v); }}
+                        onChange={(e) => {
+                          const v = Number(e.target.value) || 0;
+                          setBudgetState(v);
+                          api.setWorkspaceBudget({ month_usd: v || null }).catch(() => { /* */ });
+                        }}
                         placeholder="—" /></label>
                   </div>
                 </div>
