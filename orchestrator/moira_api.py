@@ -426,6 +426,7 @@ def mobile_inbox(store: Store) -> list[dict]:
                       if e["kind"] in ("gate.wait", "node.escalate", "budget.wait")), None)
             out.append({"run_id": r["run_id"], "workspace": ws["name"], "pipeline": r["pipeline_id"],
                         "persona": g_in.get("persona", ""), "message": w["message"] if w else "",
+                        "since": w["ts"] if w else r.get("updated_at"),
                         "kind": ("failed_node" if w and w["kind"] == "node.escalate"
                                  else "budget" if w and w["kind"] == "budget.wait"
                                  else "gate"),
@@ -543,6 +544,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if data:
             self.wfile.write(data)
+
+    @staticmethod
+    def _with_session_script(data: bytes) -> bytes:
+        """In local auth mode, arm a served HTML page with the session token +
+        a fetch wrapper (used by the cockpit index AND the mobile inbox /m —
+        without it a page renders but every API call it makes is 401)."""
+        if authn.auth_mode() != "local":
+            return data
+        token = authn.mint_local_token("local", ["admin"], ttl_seconds=43200)
+        inject = (
+            "<script>window.__MOIRA_TOKEN__=" + json.dumps(token) + ";"
+            "(function(){var t=window.__MOIRA_TOKEN__;if(!t)return;"
+            "var f=window.fetch.bind(window);window.fetch=function(i,o){o=o||{};"
+            "var h=new Headers((o&&o.headers)||(typeof i!=='string'&&i&&i.headers)||{});"
+            "if(!h.has('Authorization'))h.set('Authorization','Bearer '+t);"
+            "var n={};for(var k in o)n[k]=o[k];n.headers=h;return f(i,n);};})();</script>"
+        ).encode("utf-8")
+        lower = data.lower()
+        idx = lower.find(b"</head>")
+        return (data[:idx] + inject + data[idx:]) if idx != -1 else inject + data
 
     def _send_text(self, code: int, text: str, ctype="text/html; charset=utf-8"):
         data = text.encode("utf-8")
@@ -918,7 +939,8 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/m", "/m/", "/mobile", "/mobile/"):
                 mf = Path(__file__).parent / "mobile.html"
                 if mf.exists():
-                    return self._send_text(200, mf.read_text("utf-8"))
+                    data = self._with_session_script(mf.read_bytes())
+                    return self._send_text(200, data.decode("utf-8"))
                 return self._send(404, {"error": "mobile.html missing"})
             # static frontend
             return self._serve_static(path)
@@ -941,19 +963,8 @@ class Handler(BaseHTTPRequestHandler):
         # When auth is on, the server owns the session token: mint a short-lived local
         # token for the local user and inject it + a fetch() wrapper that attaches it as
         # a bearer header. The web cockpit then authenticates without any IdP or rebuild.
-        if ctype == "text/html" and authn.auth_mode() == "local":
-            token = authn.mint_local_token("local", ["admin"], ttl_seconds=43200)
-            inject = (
-                "<script>window.__MOIRA_TOKEN__=" + json.dumps(token) + ";"
-                "(function(){var t=window.__MOIRA_TOKEN__;if(!t)return;"
-                "var f=window.fetch.bind(window);window.fetch=function(i,o){o=o||{};"
-                "var h=new Headers((o&&o.headers)||(typeof i!=='string'&&i&&i.headers)||{});"
-                "if(!h.has('Authorization'))h.set('Authorization','Bearer '+t);"
-                "var n={};for(var k in o)n[k]=o[k];n.headers=h;return f(i,n);};})();</script>"
-            ).encode("utf-8")
-            lower = data.lower()
-            idx = lower.find(b"</head>")
-            data = (data[:idx] + inject + data[idx:]) if idx != -1 else inject + data
+        if ctype == "text/html":
+            data = self._with_session_script(data)
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))

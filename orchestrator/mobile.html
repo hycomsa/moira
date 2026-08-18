@@ -29,6 +29,7 @@
              border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border)); border-radius:20px;
              font-size:11px; padding:2px 10px; font-weight:600; }
   .ws { color:var(--muted); font-size:12px; } .pipe { font-weight:700; font-size:15px; }
+  .func { color:var(--accent); font-weight:700; } .age { color:var(--muted); font-size:12px; }
   .msg { color:var(--text); font-size:14px; margin:4px 0 12px; }
   .sec { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:10px 0 6px; }
   .check { display:flex; align-items:center; gap:8px; font-size:13px; padding:3px 0; }
@@ -87,10 +88,12 @@ function card(it){
   const gr = it.gate_review||{};
   const cov = gr.coverage ? (a=>{const ok=a.total>0&&a.in_tasks>=a.total;return grchip(`${ok?'✓':'⚠'} AC ${a.in_tasks}/${a.total}`,ok?'#3fb950':'#d29922');})(gr.coverage.ac) : "";
   const conf = gr.conformance ? grchip(`⚖ ${Math.round(gr.conformance.overall*100)}%`, gr.conformance.overall>=0.8?'#3fb950':gr.conformance.overall>=0.5?'#d29922':'#8b949e') : "";
+  const agoS=(ts)=>{const s=Date.now()/1000-ts;return s<3600?`${s/60|0}m`:s<86400?`${s/3600|0}h`:`${s/86400|0}d`;};
+  const age = it.since?`<span class="age"${(Date.now()/1000-it.since>7*86400)?' style="color:#d29922"':''}>⏳ ${agoS(it.since)}</span>`:"";
   return `<div class="card" data-run="${esc(it.run_id)}">
     <div class="ch">${it.persona?`<span class="persona">${esc(it.persona)}</span>`:""}
-      <span class="pipe">${esc(it.pipeline)}</span><span class="ws">· ${esc(it.workspace)}</span>${cov}${conf}</div>
-    <div class="msg">${esc(it.message)}</div>
+      <span class="pipe">${esc(it.pipeline)}</span><span class="ws">· ${esc(it.workspace)}</span>${age}${cov}${conf}</div>
+    <div class="msg">${it.func?`<span class="func">${esc(it.func)}</span> `:""}${esc(it.message)}</div>
     ${checks?`<div class="sec">Checks feeding this gate</div>${checks}`:""}
     <div class="meta">
       ${it.model&&it.model!=="—"?`<span class="mdl">◆ ${esc(it.model)}</span>`:""}

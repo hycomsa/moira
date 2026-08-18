@@ -57,6 +57,11 @@ export function App() {
     try { setInbox((await api.inbox()).inbox); } catch { /* sidecar starting */ }
   }, []);
 
+  // the browser tab doubles as a pending-decisions badge: "(3) Moira"
+  useEffect(() => {
+    document.title = inbox.length > 0 ? `(${inbox.length}) Moira` : "Moira";
+  }, [inbox.length]);
+
   const loadWorkspaces = useCallback(async () => {
     try { setWorkspaces((await api.workspaces()).workspaces); } catch { /* */ }
   }, []);

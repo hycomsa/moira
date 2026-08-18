@@ -225,10 +225,14 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
             <div className="panel-head"><h3>Needs your decision</h3>
               {inbox.length > 0 && <span className="pill-count">{inbox.length}</span>}</div>
             {inbox.length === 0 && <div className="empty small">Nothing waiting — agents autonomous.</div>}
-            {inbox.slice(0, 4).map((it) => (
+            {[...inbox].sort((a, b) => (a.since || 0) - (b.since || 0)).slice(0, 4).map((it) => (
               <div className="ov-gate" key={it.run_id} onClick={() => onNavigate("inbox")}>
                 {it.persona && <span className="persona-tag">{it.persona}</span>}
-                <span className="ov-gate-msg">{it.message}</span>
+                <span className="ov-gate-msg">
+                  {it.gate_review?.func_id && <b className="ov-gate-func">{it.gate_review.func_id} </b>}
+                  {it.message}
+                </span>
+                {!!it.since && <span className="muted small" style={{ flex: "none" }}>{ago(it.since)}</span>}
               </div>
             ))}
           </section>

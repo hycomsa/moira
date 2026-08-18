@@ -85,6 +85,11 @@ batch, ADR-009…016).
   succeeded/failed) with live counts + a text filter matching func/pipeline/id.
 - **Cockpit UX: Inbox cards carry the FUNC** — each decision card is titled
   with the func-spec it concerns, like the run list.
+- **Cockpit UX: more polish** — the browser tab shows the pending-decisions
+  count ("(11) Moira"); the run list gains a newest/oldest sort toggle and an
+  explicit "no runs match the filter" state; Overview's decision panel shows
+  the FUNC and waiting age, oldest first; the mobile inbox `/m` titles cards
+  with the FUNC and shows waiting age (stale highlighted).
 - **Cockpit UX: Inbox aging & cleanup** — decisions are sorted oldest-first
   and each card shows how long it has been waiting (`/api/inbox` returns
   `since`; stale > 7 days highlighted); every card has **✕ Cancel run**, and
@@ -114,6 +119,10 @@ batch, ADR-009…016).
   the model was shown.
 
 ### Fixed
+- **The mobile inbox `/m` was unusable with web auth on** — the session-token
+  injection covered only the cockpit's `index.html`, so `/m` rendered but every
+  API call it made returned 401. The injection is now a shared helper applied
+  to both pages.
 - An auto gate with `escalate_on_blocking=false` could loop reject→rework
   **forever** (the durable runner's lease heartbeat kept it alive); the loop is
   now bounded. (ADR-010)

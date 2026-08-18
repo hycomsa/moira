@@ -29,6 +29,7 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [funcs, setFuncs] = useState<{ id: string; title: string }[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [q, setQ] = useState("");
+  const [oldestFirst, setOldestFirst] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
   const [pipelineId, setPipelineId] = useState("");
@@ -218,15 +219,23 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               );
             })}
           </div>
-          <input className="run-search" placeholder="filter: func / pipeline / id…"
-                 value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="run-search-row">
+            <input className="run-search" placeholder="filter: func / pipeline / id…"
+                   value={q} onChange={(e) => setQ(e.target.value)} />
+            <button className="chip" title="Toggle sort order"
+              onClick={() => setOldestFirst((v) => !v)}>⇅ {oldestFirst ? "oldest" : "newest"}</button>
+          </div>
           <div className="run-list">
-            {runs
-              .filter((r) => statusFilter === "all" || r.status === statusFilter
-                || (statusFilter === "failed" && (r.status === "rejected" || r.status === "cancelled")))
-              .filter((r) => !q.trim()
-                || `${r.func || ""} ${r.pipeline_id} ${r.run_id}`.toLowerCase().includes(q.trim().toLowerCase()))
-              .map((r) => (
+            {(() => {
+              const shown = runs
+                .filter((r) => statusFilter === "all" || r.status === statusFilter
+                  || (statusFilter === "failed" && (r.status === "rejected" || r.status === "cancelled")))
+                .filter((r) => !q.trim()
+                  || `${r.func || ""} ${r.pipeline_id} ${r.run_id}`.toLowerCase().includes(q.trim().toLowerCase()))
+                .sort((a, b) => oldestFirst ? a.created_at - b.created_at : b.created_at - a.created_at);
+              if (runs.length > 0 && shown.length === 0)
+                return <div className="empty">No runs match the filter.</div>;
+              return shown.map((r) => (
               <div key={r.run_id} className={"run-row" + (selected === r.run_id ? " active" : "")}
                    onClick={() => { setSelected(r.run_id); setStep(null); }}
                    title={`started ${fmtWhen(r.created_at)}`}>
@@ -238,7 +247,8 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
                 </div>
                 <div className="run-row-l2 muted">{r.func ? `${r.pipeline_id} · ` : ""}{r.run_id.replace("run-", "")}</div>
               </div>
-            ))}
+              ));
+            })()}
             {runs.length === 0 && <div className="empty">No runs yet.</div>}
           </div>
         </section>
