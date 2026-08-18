@@ -42,6 +42,12 @@ def validate_pipeline(pipeline: Pipeline) -> list[str]:
             ml = n.gate.max_loop
             if isinstance(ml, bool) or not isinstance(ml, int) or ml < 0:
                 errors.append(f"gate node '{n.id}' max_loop must be a non-negative integer")
+        # fail-loud model identity (QW6/ADR-015): litellm has no default model —
+        # reject the configuration at save/launch, not minutes later mid-run
+        if (n.type in (NodeType.PRODUCER, NodeType.VERIFIER) and n.backend == "litellm"
+                and (not (n.model or "").strip() or n.model == "mock")):
+            errors.append(f"node '{n.id}': backend 'litellm' requires an explicit model "
+                          "(e.g. 'gpt-4o', 'ollama/llama3.1')")
 
     if _has_cycle(pipeline.dep_map()):
         errors.append("dependency cycle detected in pipeline")

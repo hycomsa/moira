@@ -39,9 +39,7 @@ def _load_litellm():
 class LiteLLMBackend:
     name = "litellm"
 
-    def __init__(self, default_model: str = "gpt-4o-mini", temperature: float = 0.2,
-                 timeout: int = 300) -> None:
-        self.default_model = default_model
+    def __init__(self, temperature: float = 0.2, timeout: int = 300) -> None:
         self.temperature = temperature
         self.timeout = timeout
 
@@ -53,7 +51,13 @@ class LiteLLMBackend:
         if not ll:
             return BackendResult(ok=False, error="litellm not installed "
                                  "(pip install 'moira-orchestrator[backends]')")
-        model = node.model if node.model and node.model != "mock" else self.default_model
+        model = (node.model or "").strip()
+        if not model or model == "mock":
+            # fail-loud model identity (QW6/ADR-015): a silent default would make
+            # the sealed audit's `input.model` lie about what actually ran and cost
+            return BackendResult(ok=False, error=(
+                "litellm requires an explicit model on the node/agent "
+                "(e.g. 'gpt-4o', 'ollama/llama3.1') — no silent default"))
         user = contract.build_stage_prompt(
             role=node.role or node.id, spec_ref=node.spec_ref,
             spec_text=context.get("spec_text", ""),
