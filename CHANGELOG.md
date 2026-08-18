@@ -70,6 +70,13 @@ batch, ADR-009…016).
   verified, $1.50 / 131 s on the forced-rework scenario.
 
 ### Changed
+- **Cockpit UX: workspace picker with details** — the topbar workspace
+  selector is a real picker now: every workspace shows which AI SDLC (spec)
+  repo and code repo it points at before you switch; the active one is
+  marked; hover on the button shows the current paths.
+- **Cockpit UX: run timestamps** — the run list shows each run's age and
+  pipeline; the run header shows the full start date-time, last activity (or
+  finish time + duration for terminal runs) and the owner.
 - **LiteLLM has no silent default model** — a node without an explicit model
   fails loudly before any provider call, and `validate_pipeline` rejects the
   configuration at save/launch. Pipelines that relied on the silent

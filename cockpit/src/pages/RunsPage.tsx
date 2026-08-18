@@ -6,6 +6,7 @@ import { ArtifactModal } from "../components/ArtifactModal";
 import { Modal } from "../components/Modal";
 import { Metrics, fmtDur, fmtTokens } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
+import { ago, fmtSpan, fmtWhen, TERMINAL_STATUSES } from "../time";
 import { OrbitGraph } from "../components/OrbitGraph";
 import { ScorecardView } from "../components/Scorecard";
 import { Markdown } from "../components/Markdown";
@@ -191,9 +192,14 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
           <div className="run-list">
             {runs.map((r) => (
               <div key={r.run_id} className={"run-row" + (selected === r.run_id ? " active" : "")}
-                   onClick={() => { setSelected(r.run_id); setStep(null); }}>
-                <Dot s={r.status} /><span className="rid">{r.run_id.replace("run-", "")}</span>
-                <span className="rstatus">{r.status}</span>
+                   onClick={() => { setSelected(r.run_id); setStep(null); }}
+                   title={`started ${fmtWhen(r.created_at)}`}>
+                <div className="run-row-l1">
+                  <Dot s={r.status} /><span className="rid">{r.run_id.replace("run-", "")}</span>
+                  <span className="rstatus">{r.status}</span>
+                  <span className="rtime muted">{ago(r.created_at)}</span>
+                </div>
+                <div className="run-row-l2 muted">{r.pipeline_id}</div>
               </div>
             ))}
             {runs.length === 0 && <div className="empty">No runs yet.</div>}
@@ -268,6 +274,20 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
               <Button variant="ghost" size="sm" disabled={reportBusy} onClick={genReport}>{reportBusy ? "…" : "⤓ Report"}</Button>
               <Button variant="ghost" size="sm" onClick={downloadDebug}
                 title="Download a reproducibility bundle: run state, events, live stream (incl. the exact command/prompt when MOIRA_DEBUG=1) + this run's sidecar log">🐞 Debug bundle</Button>
+            </div>
+            <div className="run-when muted small">
+              🕒 started <b>{fmtWhen(detail.run.created_at)}</b>
+              <span className="muted"> ({ago(detail.run.created_at)} ago)</span>
+              {TERMINAL_STATUSES.has(detail.run.status) && (
+                <> · {detail.run.status} <b>{fmtWhen(detail.run.updated_at)}</b>
+                  {fmtSpan(detail.run.created_at, detail.run.updated_at) &&
+                    <> · took <b>{fmtSpan(detail.run.created_at, detail.run.updated_at)}</b></>}
+                </>
+              )}
+              {!TERMINAL_STATUSES.has(detail.run.status) && detail.run.updated_at > detail.run.created_at && (
+                <> · last activity <b>{ago(detail.run.updated_at)} ago</b></>
+              )}
+              <span className="muted"> · by {detail.run.owner}</span>
             </div>
             <section className="panel">
               <h3>Execution plan</h3>

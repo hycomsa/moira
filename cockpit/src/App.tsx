@@ -8,7 +8,7 @@ import { AgentsPage } from "./pages/AgentsPage";
 import { SkillsPage } from "./pages/SkillsPage";
 import { FilesPage } from "./pages/FilesPage";
 import { TraceabilityPage } from "./pages/TraceabilityPage";
-import { Select } from "./components/ui/Select";
+import { WorkspacePicker } from "./components/WorkspacePicker";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { ActivityPage } from "./pages/ActivityPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -87,10 +87,8 @@ export function App() {
           <span className="tagline">AI-native SDLC cockpit · v0.1</span>
         </div>
         <div className="topbar-right">
-          <Select style={{ width: 168 }} value={activeWs} onChange={(e) => switchWs(e.target.value)} title="Workspace">
-            {workspaces.map((w) => <option key={w.id} value={w.id}>⬢ {w.name}</option>)}
-            <option value="__new__">+ New workspace…</option>
-          </Select>
+          <WorkspacePicker workspaces={workspaces} activeWs={activeWs}
+            onSelect={switchWs} onNew={() => setShowWizard(true)} />
           <div className="inbox-badge" onClick={() => setView("inbox")} style={{ cursor: "pointer" }}>
             Inbox <span className="count">{inbox.length}</span>
           </div>

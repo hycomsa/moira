@@ -2,20 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type ActivityRow, type InboxItem, type RunSummary, type SpendRollup, type Stats, type TraceFunc } from "../api";
 import { Metrics, fmtDur, fmtTokens } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
+import { ago } from "../time";
 
 const COLOR: Record<string, string> = {
   succeeded: "#3fb950", failed: "#f85149", waiting_gate: "#d29922",
   running: "#58a6ff", rejected: "#f85149", pending: "#8b949e",
 };
 const Dot = ({ s }: { s: string }) => <span className="dot" style={{ background: COLOR[s] ?? "#8b949e" }} />;
-
-const ago = (ts: number) => {
-  const s = Date.now() / 1000 - ts;
-  if (s < 60) return `${s | 0}s`;
-  if (s < 3600) return `${(s / 60) | 0}m`;
-  if (s < 86400) return `${(s / 3600) | 0}h`;
-  return `${(s / 86400) | 0}d`;
-};
 
 function Spark({ values, color }: { values: number[]; color: string }) {
   if (values.length < 2) return <svg className="spark" width={72} height={24} />;

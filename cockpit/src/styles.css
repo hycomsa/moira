@@ -111,7 +111,13 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 6px; }
 
 .run-list { display: flex; flex-direction: column; gap: 2px; }
-.run-row { display: flex; align-items: center; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
+.run-row { display: block; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
+.run-row-l1 { display: flex; align-items: center; }
+.run-row-l1 .rtime { margin-left: auto; font-size: 11px; flex: none; }
+.run-row-l1 .rstatus { margin-left: 8px; }
+.run-row-l2 { font-size: 11px; padding-left: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-when { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; margin: -6px 0 10px 2px; }
+.run-when b { color: var(--text); font-weight: 600; }
 .run-row:hover { background: var(--panel2); }
 .run-row.active { background: var(--panel2); outline: 1px solid var(--accent2); }
 .rid { color: var(--text); }
@@ -800,6 +806,32 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
   border: 1px solid color-mix(in srgb,var(--oc) 45%,var(--border)); color: var(--oc); font-size: 12px; font-weight: 600;
   border-radius: 6px; padding: 6px 10px; cursor: pointer; }
 .orbit-detail .od-open:hover { background: color-mix(in srgb,var(--oc) 24%,transparent); }
+
+/* ===== Workspace picker (topbar) ===== */
+.wsp { position: relative; }
+.wsp-btn { display: flex; align-items: center; gap: 7px; max-width: 240px;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; padding: 7px 11px; font-size: 13px; cursor: pointer; }
+.wsp-btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.wsp-hex { color: var(--accent); font-size: 12px; }
+.wsp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.wsp-caret { color: var(--muted); font-size: 10px; }
+.wsp-pop { position: absolute; right: 0; top: 44px; z-index: 50; width: 420px; max-height: 72vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 6px;
+  box-shadow: 0 24px 60px -24px #000, 0 0 0 1px color-mix(in srgb,#fff 4%,transparent) inset; }
+.wsp-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 8px 10px 6px; }
+.wsp-row { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text);
+  border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+.wsp-row:hover { background: var(--panel2); }
+.wsp-row.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.wsp-row-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+.wsp-row-name { font-weight: 650; font-size: 13px; }
+.wsp-id { font-size: 11px; }
+.wsp-check { margin-left: auto; color: var(--accent); font-weight: 700; }
+.wsp-path { display: flex; align-items: baseline; gap: 7px; padding-left: 19px; line-height: 1.5; }
+.wsp-path .wsp-k { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); width: 30px; flex: none; }
+.wsp-path code { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.wsp-new { color: var(--accent); font-weight: 600; border-top: 1px solid var(--border); border-radius: 0 0 10px 10px; margin-top: 4px; padding-top: 10px; }
 
 /* ===== Profile / account menu ===== */
 .profile { position: relative; }
