@@ -163,3 +163,6 @@ MOIRA_SKILL_RETRIES=0` for aggressive fail-fast, or bump `MOIRA_CLAUDE_SKILL_MAX
 - **Secrets** stay in the OS keychain / `.env` (gitignored) — never in the repo or logs.
 - Local state (`*.sqlite`, `.moira/`, `dist/`, `node_modules/`, `target/`) is gitignored — don't commit it.
 - End commit messages with a `Co-Authored-By:` trailer when pairing.
+- User-visible changes (features, behavior changes, fixes) get an entry in
+  `CHANGELOG.md` (Keep a Changelog format) in the same commit; architecture
+  decisions get an ADR in `docs/adr/`.
