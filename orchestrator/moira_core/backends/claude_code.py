@@ -18,12 +18,56 @@ import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import threading
 from typing import Any
 
 from ..models import BackendResult, Cost, EFFORT_LEVELS, Node
 from . import contract
+
+# Escalating, VERIFIED termination (QW7/ADR-016). The CLI gets a graceful
+# SIGTERM first; only a process that ignores it is SIGKILLed — and both hit the
+# whole PROCESS GROUP, so grandchildren that inherited our stdout pipe die too
+# (otherwise the stream reader hangs forever on a pipe the dead child no longer
+# owns — a failure mode documented in Cezar's postmortems).
+TERM_GRACE = 8.0   # seconds to exit after SIGTERM before escalating to SIGKILL
+EOF_GRACE = 4.0    # after SIGKILL: force-close our pipe end if EOF still hasn't come
+
+
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    """Signal the CLI's whole process group; fall back to the direct child."""
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except Exception:  # noqa: BLE001 — group gone / unsupported: try the child itself
+        try:
+            proc.send_signal(sig)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _terminate_tree(proc: subprocess.Popen) -> bool:
+    """SIGTERM → wait → SIGKILL → wait → unblock. Returns True if SIGKILL was
+    needed. Never returns before the exit is verified or the pipe force-closed."""
+    _signal_group(proc, signal.SIGTERM)
+    try:
+        proc.wait(timeout=TERM_GRACE)
+        return False
+    except subprocess.TimeoutExpired:
+        pass
+    _signal_group(proc, signal.SIGKILL)
+    try:
+        proc.wait(timeout=EOF_GRACE)
+    except subprocess.TimeoutExpired:
+        pass
+    # last resort: a detached survivor may still hold our pipe — closing our end
+    # unblocks the reader (it sees a closed file instead of waiting for EOF)
+    try:
+        if proc.stdout:
+            proc.stdout.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return True
 
 
 class ClaudeCodeBackend:
@@ -111,10 +155,9 @@ class ClaudeCodeBackend:
         with self._active_lock:
             procs = list(self._active)
         for p in procs:
-            try:
-                p.kill()
-            except Exception:  # noqa: BLE001
-                pass
+            # escalate off-thread (QW7/ADR-016): cancel() must return promptly
+            # while SIGTERM→SIGKILL verification runs its grace windows
+            threading.Thread(target=_terminate_tree, args=(p,), daemon=True).start()
 
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
@@ -329,34 +372,43 @@ class ClaudeCodeBackend:
         if self._cancelled:  # cancellation already requested — don't even start
             return BackendResult(ok=False, error="cancelled")
         try:
+            # start_new_session: the CLI and everything it spawns share one process
+            # group, so termination reaches grandchildren holding our pipe (ADR-016)
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                    text=True, bufsize=1, cwd=context.get("cwd"))
+                                    text=True, bufsize=1, cwd=context.get("cwd"),
+                                    start_new_session=True)
         except Exception as e:  # noqa: BLE001
             return BackendResult(ok=False, error=f"claude CLI error: {e}")
         with self._active_lock:
             self._active.add(proc)
-        if self._cancelled:  # raced with cancel() — kill immediately
-            try:
-                proc.kill()
-            except Exception:  # noqa: BLE001
-                pass
+        if self._cancelled:  # raced with cancel() — terminate immediately
+            threading.Thread(target=_terminate_tree, args=(proc,), daemon=True).start()
 
         import threading as _threading
-        timed_out = {"v": False}
+        timed_out = {"v": False, "escalated": False}
 
         def _kill():
             timed_out["v"] = True
-            try:
-                proc.kill()
-            except Exception:  # noqa: BLE001
-                pass
+            timed_out["escalated"] = _terminate_tree(proc)
         watchdog = _threading.Timer(timeout, _kill)
         watchdog.start()
         try:
             final, _, _ = self._reduce_stream(proc.stdout, on_record=emit)
             proc.wait()
+        except (ValueError, OSError):
+            # our pipe end was force-closed by the terminator (last-resort unblock)
+            final = None
+            try:
+                proc.wait(timeout=5)
+            except Exception:  # noqa: BLE001
+                pass
         finally:
             watchdog.cancel()
+            if timed_out["v"]:
+                # the reader unblocks the instant the group dies, while the watchdog
+                # thread may still be inside its escalation — join it so the
+                # "escalated" verdict below is final, not racing (ADR-016)
+                watchdog.join(timeout=TERM_GRACE + EOF_GRACE + 5)
             with self._active_lock:
                 self._active.discard(proc)
 
@@ -364,9 +416,12 @@ class ClaudeCodeBackend:
             return BackendResult(ok=False, error="cancelled")
 
         if timed_out["v"]:
+            how = "SIGTERM→SIGKILL" if timed_out["escalated"] else "SIGTERM"
             if debug:
-                emit({"kind": "debug", "text": f"timed out after {timeout}s — process killed"}, 0, 0)
-            return BackendResult(ok=False, error="claude CLI timed out")
+                emit({"kind": "debug",
+                      "text": f"timed out after {timeout}s — process group terminated ({how})"}, 0, 0)
+            return BackendResult(ok=False,
+                                 error=f"claude CLI timed out after {timeout}s ({how}, exit verified)")
         if final is None:
             err = (proc.stderr.read() if proc.stderr else "").strip()[:500]
             if debug:

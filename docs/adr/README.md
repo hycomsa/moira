@@ -22,6 +22,7 @@ project's ADRs; they now live with the code they govern (ADR-005/006 P5 hygiene 
 | [013](ADR-013-failed-node-retry.md) | "Retry" as the third decision on an escalated failed node; approve-the-gap becomes explicit | Accepted (implemented) |
 | [014](ADR-014-check-output-to-rework.md) | Closed test-fix loop — failing check output feeds the rework prompt (opt-in per gate, audit-derived) | Accepted (implemented) |
 | [015](ADR-015-fail-loud-model-identity.md) | Fail-loud model identity — litellm has no silent default model; validation at save/launch | Accepted (implemented) |
+| [016](ADR-016-process-termination.md) | Escalating, verified process termination — group SIGTERM→SIGKILL, reader unblock, visible verdict | Accepted (implemented) |
 
 > `ADR-007-agentic-engineering-workflow` was left in the `ai-sdlc` framework repo —
 > it describes the engineering workflow, not the Moira product, so its ownership is
