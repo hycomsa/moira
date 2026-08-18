@@ -23,18 +23,30 @@ class TestArtifactId(unittest.TestCase):
         self.assertIsNone(gitdiff.artifact_id(f("src/foo.ts")))
 
 
+def _repo_with_skills(*skills: str) -> str:
+    root = tempfile.mkdtemp(prefix="skillrepo-")
+    for s in skills:
+        d = Path(root) / ".agents" / "skills" / s
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text("---\nname: x\n---\nPlaybook body.", encoding="utf-8")
+    return root
+
+
 class TestSkillPromptInheritance(unittest.TestCase):
     def test_empty_input_inherits_produced_artifact(self):
+        cwd = _repo_with_skills("ba@shape-func-spec")
         be = ClaudeCodeBackend()
         node = Node(id="a1", name="s", type=NodeType.PRODUCER, skill="ba@shape-func-spec", skill_input="")
-        prompt = be._build_prompt(node, {"produced_artifact": "REQ-APP-03"})
-        self.assertIn("/ba@shape-func-spec REQ-APP-03", prompt)
+        prompt = be._build_prompt(node, {"produced_artifact": "REQ-APP-03", "cwd": cwd})
+        self.assertIn("=== INPUT ===\nREQ-APP-03", prompt)
 
     def test_explicit_input_wins(self):
+        cwd = _repo_with_skills("ba@shape-intent-spec")
         be = ClaudeCodeBackend()
         node = Node(id="a0", name="s", type=NodeType.PRODUCER, skill="ba@shape-intent-spec", skill_input="driver onboarding")
-        prompt = be._build_prompt(node, {"produced_artifact": "REQ-APP-03"})
-        self.assertIn("/ba@shape-intent-spec driver onboarding", prompt)
+        prompt = be._build_prompt(node, {"produced_artifact": "REQ-APP-03", "cwd": cwd})
+        self.assertIn("=== INPUT ===\ndriver onboarding", prompt)
+        self.assertNotIn("REQ-APP-03", prompt)
 
 
 class _WriterBackend:

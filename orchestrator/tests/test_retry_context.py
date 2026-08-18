@@ -140,11 +140,16 @@ class TestPromptWiring(unittest.TestCase):
         self.assertIn("timeout after 300s", prompt)
 
     def test_claude_code_skill_prompt_contains_error_section(self):
+        import pathlib
         from moira_core.backends.claude_code import ClaudeCodeBackend
+        d = tempfile.mkdtemp()
+        sk = pathlib.Path(d, ".agents", "skills", "ba@shape-func-spec")
+        sk.mkdir(parents=True)
+        (sk / "SKILL.md").write_text("---\nname: x\n---\nBody.")
         be = ClaudeCodeBackend()
         node = Node(id="author", name="Author", type=NodeType.PRODUCER,
                     role="ba-skill", skill="ba@shape-func-spec", skill_input="REQ-X-01")
-        prompt = be._build_prompt(node, {"attempt_errors": ["contract parse error"]})
+        prompt = be._build_prompt(node, {"cwd": d, "attempt_errors": ["contract parse error"]})
         self.assertIn("PREVIOUS ATTEMPT FAILED", prompt)
         self.assertIn("contract parse error", prompt)
 

@@ -216,20 +216,29 @@ class ClaudeCodeBackend:
             extra = [p for p in [(node.prompt_extra or "").strip(),
                                  (context.get("feedback", {}).get(node.id, "") or "").strip()] if p]
             playbook = self._load_skill_playbook(node.skill, context.get("cwd"))
-            if playbook:
-                sections = [
-                    f'You are executing the AI SDLC skill "{node.skill}". Follow its playbook exactly.',
-                    f"=== PLAYBOOK ({node.skill}/SKILL.md) ===\n{playbook}",
-                ]
-                if inp:
-                    sections.append(f"=== INPUT ===\n{inp}")
-                if extra:
-                    sections.append("=== ADDITIONAL GUIDANCE ===\n" + "\n\n".join(extra))
-                sections.append(self.SKILL_EXEC)
-                return "\n\n".join(sections)
-            # fallback: slash-command invocation (skill not found on disk)
-            line = f"/{node.skill} {inp}".strip()
-            return line + ("\n\n" + "\n\n".join(extra) if extra else "")
+            if playbook is None:
+                # run() rejects a missing SKILL.md BEFORE building the prompt
+                # (ADR-018) — the old silent /slash fallback is gone: headless
+                # claude ignores slash lines, so it produced runs that claimed
+                # success for a playbook that never executed.
+                raise ValueError(f"skill '{node.skill}' has no SKILL.md in this repo")
+            sections = [
+                f'You are executing the AI SDLC skill "{node.skill}". Follow its playbook exactly.',
+                f"=== PLAYBOOK ({node.skill}/SKILL.md) ===\n{playbook}",
+            ]
+            skill_dir = os.path.join(context.get("cwd") or "", ".agents", "skills", node.skill)
+            if os.path.isdir(os.path.join(skill_dir, "references")):
+                # QW10/ADR-018: hand the support files over — a skill shipped
+                # with references/ is crippled without them
+                sections.append("=== SKILL SUPPORT FILES ===\n"
+                                f"The skill's directory is {os.path.abspath(skill_dir)} — "
+                                "read the files under its references/ before executing the playbook.")
+            if inp:
+                sections.append(f"=== INPUT ===\n{inp}")
+            if extra:
+                sections.append("=== ADDITIONAL GUIDANCE ===\n" + "\n\n".join(extra))
+            sections.append(self.SKILL_EXEC)
+            return "\n\n".join(sections)
         return contract.build_stage_prompt(
             role=node.role or node.id, spec_ref=node.spec_ref,
             spec_text=context.get("spec_text", ""),
@@ -290,6 +299,15 @@ class ClaudeCodeBackend:
         return cmd
 
     @staticmethod
+    def _weighted_in(u: dict) -> int:
+        """Cost-weighted input tokens (QW13/ADR-018): cache reads are billed at
+        ~0.1x and cache creation at ~1.25x of a plain input token — counting
+        them raw (or not at all) makes cache-heavy runs lie about cost."""
+        return int(round((u.get("input_tokens", 0) or 0)
+                         + 1.25 * (u.get("cache_creation_input_tokens", 0) or 0)
+                         + 0.10 * (u.get("cache_read_input_tokens", 0) or 0)))
+
+    @staticmethod
     def _reduce_stream(lines, on_record=None):
         """Consume the claude stream-json NDJSON, coalescing per assistant turn:
         emit a live record for each text block / tool_use (via on_record(rec, tin, tout))
@@ -310,8 +328,9 @@ class ClaudeCodeBackend:
             if et == "assistant":
                 msg = ev.get("message", {}) or {}
                 u = msg.get("usage", {}) or {}
-                if u.get("input_tokens"):
-                    tin = u["input_tokens"]
+                if u.get("input_tokens") or u.get("cache_read_input_tokens") \
+                        or u.get("cache_creation_input_tokens"):
+                    tin = ClaudeCodeBackend._weighted_in(u)
                 tout += u.get("output_tokens", 0) or 0
                 for b in msg.get("content", []) or []:
                     if not isinstance(b, dict):
@@ -328,8 +347,9 @@ class ClaudeCodeBackend:
             elif et == "result":
                 final = ev
                 u = ev.get("usage", {}) or {}
-                if u.get("input_tokens"):
-                    tin = u["input_tokens"]
+                if u.get("input_tokens") or u.get("cache_read_input_tokens") \
+                        or u.get("cache_creation_input_tokens"):
+                    tin = ClaudeCodeBackend._weighted_in(u)
                 if u.get("output_tokens"):
                     tout = u["output_tokens"]
                 if on_record:
@@ -340,6 +360,14 @@ class ClaudeCodeBackend:
         if not self.available():
             return BackendResult(ok=False,
                                  error=f"claude CLI '{self.binary}' not found on PATH")
+        if node.skill and self._load_skill_playbook(node.skill, context.get("cwd")) is None:
+            # fail loud, before any spend (QW10/ADR-018): a missing playbook must
+            # never degrade into a run that pretends the skill executed
+            expected = os.path.join(context.get("cwd") or ".",
+                                    ".agents", "skills", node.skill, "SKILL.md")
+            return BackendResult(ok=False, error=(
+                f"skill '{node.skill}' not found — expected {expected}; "
+                "check the workspace's AI SDLC repo"))
         cmd = self._build_cmd(node, context)
         role = node.role or node.id
         # fail fast on skills (headless ba@* can hang); big budget for coding; default otherwise
@@ -442,7 +470,7 @@ class ClaudeCodeBackend:
         result_text = envelope.get("result", "") or ""
         usage = envelope.get("usage", {}) or {}
         cost = Cost(
-            tokens_in=usage.get("input_tokens", 0) or 0,
+            tokens_in=self._weighted_in(usage),  # cache-aware (QW13/ADR-018)
             tokens_out=usage.get("output_tokens", 0) or 0,
             usd=envelope.get("total_cost_usd", 0.0) or 0.0,
         )

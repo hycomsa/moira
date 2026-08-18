@@ -123,10 +123,18 @@ class TestBudgetTiers(unittest.TestCase):
     """skill / heavy / default budgets pick the right --max-turns."""
 
     def _turns(self, **node_kw):
+        import pathlib, tempfile
         from moira_core.models import Node, NodeType
         b = B(max_turns=12, heavy_max_turns=40, skill_max_turns=7)
         node = Node(id="n", name="n", type=NodeType.PRODUCER, backend="claude_code", **node_kw)
-        cmd = b._build_cmd(node, {"spec_text": "x"})
+        ctx = {"spec_text": "x"}
+        if node_kw.get("skill"):  # skills require a real playbook on disk (ADR-018)
+            d = tempfile.mkdtemp()
+            sk = pathlib.Path(d, ".agents", "skills", node_kw["skill"])
+            sk.mkdir(parents=True)
+            (sk / "SKILL.md").write_text("---\nname: x\n---\nBody.")
+            ctx["cwd"] = d
+        cmd = b._build_cmd(node, ctx)
         return cmd[cmd.index("--max-turns") + 1]
 
     def test_skill_node_uses_skill_budget(self):
@@ -174,9 +182,12 @@ class TestSkillInlining(unittest.TestCase):
         self.assertIn("non-interactive", p)           # execution directive
         self.assertNotIn("/ba@shape-intent-spec", p)  # NOT a slash invocation
 
-    def test_falls_back_to_slash_when_missing(self):
-        p = self._prompt("/nonexistent")
-        self.assertIn("/ba@shape-intent-spec driver onboarding", p)
+    def test_missing_skill_md_raises_instead_of_silent_slash(self):
+        # the old behavior degraded to a /slash line that headless claude
+        # ignores — a run then claimed success for a playbook that never
+        # executed. Now it fails loudly (ADR-018); run() rejects even earlier.
+        with self.assertRaises(ValueError):
+            self._prompt("/nonexistent")
 
 
 class TestEffortFlag(unittest.TestCase):
@@ -218,8 +229,13 @@ class TestAgentSystemPrompt(unittest.TestCase):
         self.assertNotIn("AGENT INSTRUCTIONS", B()._build_prompt(self._node(), {"spec_text": "spec"}))
 
     def test_appended_in_skill_branch(self):
+        import pathlib, tempfile
+        d = tempfile.mkdtemp()
+        sk = pathlib.Path(d, ".agents", "skills", "ba@x")
+        sk.mkdir(parents=True)
+        (sk / "SKILL.md").write_text("---\nname: x\n---\nBody.")
         node = self._node(role="ba-skill", skill="ba@x", system_prompt="Note assumptions.")
-        p = B()._build_prompt(node, {"cwd": "/nonexistent"})  # skill branch (slash fallback)
+        p = B()._build_prompt(node, {"cwd": d})
         self.assertIn("AGENT INSTRUCTIONS", p)
         self.assertIn("Note assumptions.", p)
 

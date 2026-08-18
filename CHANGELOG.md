@@ -54,6 +54,15 @@ batch, ADR-009…016).
   raise the budget (`POST /api/workspaces/{id}/budget`, RBAC `configure`) and
   ↻ Retry. `GET /api/spend` reports the budgets; the Overview budget input now
   reads/writes the server value — the localStorage copy is gone. (ADR-017)
+- **Prompt & metering hygiene** (ADR-018): uncontrolled prompt content
+  (upstream outputs, failing check output, attempt errors) is framed as
+  `[UNTRUSTED DATA]` with a SYSTEM rule; skills hand their `references/`
+  directory to the agent; a **missing SKILL.md now fails the node loudly**
+  (the silent `/slash` fallback — which produced runs claiming success for a
+  playbook that never executed — is gone; **breaking** for pipelines pointing
+  at nonexistent skills); token counters weigh cache tokens as billed
+  (cache-read ×0.1, cache-creation ×1.25) — token_in rises for cache-heavy
+  runs (it was undercounted).
 - **Real-CLI dogfood of the closed loop** — reproducible harness
   (`orchestrator/verify_real_testfix_loop.py`) + measured report
   ([`docs/verification/2026-08-18-closed-loop-dogfood.md`](docs/verification/2026-08-18-closed-loop-dogfood.md)):
