@@ -2,8 +2,8 @@
 
 These checks could **not** be verified in the headless dev/CI environment (no GUI
 display, no real IdP). Run them on a machine with a desktop session / your IdP.
-Everything else (214 unit/integration tests, live Postgres, web-cockpit auth, the
-governance gate e2e) is automated and green.
+Everything else (the full unit/integration suite — 305 tests as of 2026-08-18, live
+Postgres, web-cockpit auth, the governance gate e2e) is automated and green.
 
 ## Must verify (core of the auth/governance work)
 

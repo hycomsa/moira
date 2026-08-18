@@ -50,7 +50,7 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 > `src-tauri/` (desktop shell). The AI SDLC framework content (intents, requirements, specs, agents, skills)
 > and any target application code live in **separate** repositories Moira reads/writes as a *workspace*.
 
-**Status — v0.1 · 216 unit/integration tests green (SQLite + live Postgres) · proven end-to-end on a real project (CSL Driver).**
+**Status — v0.2 slice · 305 unit/integration tests green (SQLite + live Postgres) · 16 ADRs implemented (see `docs/adr/`) · proven end-to-end on a real project (CSL Driver).**
 
 ## Getting started
 
@@ -78,14 +78,17 @@ Tauri Shell (Rust) + React UI   ← cockpit (web or desktop) + mobile gate inbox
         │ HTTP
 Python orchestration sidecar    ← own DAG engine, gates, audit (hash-chain),
         │ delegates each node to    pluggable persistence (SQLite/Postgres/git)
-Execution layer (pluggable)     ← Claude Code CLI · LiteLLM (frontier/local) · Codex CLI
+Execution layer (pluggable)     ← Claude Code CLI · LiteLLM (frontier/local) · (Codex CLI planned)
 ```
 
-Key decisions:
+Key decisions (full index: [`docs/adr/`](docs/adr/README.md)):
 - **ADR-002** — own dependency-free DAG engine (LangGraph deferred)
 - **ADR-003** — LiteLLM for model-agnostic routing (frontier-first, local as anti-lock-in)
 - **ADR-004** — DEV execution is delegated, not re-implemented
 - **ADR-005** — pluggable run/audit persistence (primary store + export sinks)
+- **ADR-006/007/008** — durable runner (jobs/leases) · governance packs as enforceable controls · JWT identity + default-deny RBAC
+- **ADR-009…011, 013, 014** — the closed, bounded quality loop: findings feedback on reject, `max_loop` cap, informed retry with backoff, a human **retry** decision on failed nodes, failing check output into the rework prompt (opt-in)
+- **ADR-012, 015, 016** — backend install/login probes with fail-fast launch gating · fail-loud model identity · verified process-group termination
 
 ## Repository layout
 
