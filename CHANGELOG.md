@@ -77,6 +77,24 @@ batch, ADR-009…016).
 - **Cockpit UX: run timestamps** — the run list shows each run's age and
   pipeline; the run header shows the full start date-time, last activity (or
   finish time + duration for terminal runs) and the owner.
+- **Cockpit UX: runs have a human identity** — the run list titles each run
+  with the FUNC/spec it targeted (`/api/runs` now returns `func`, derived from
+  the audit), with pipeline + id as the second line; the run header gains a
+  copy-run-id button; Overview's recent runs show the func too.
+- **Cockpit UX: run list filters** — status chips (all/running/waiting/
+  succeeded/failed) + a text filter matching func/pipeline/id.
+- **Cockpit UX: Inbox aging & cleanup** — decisions are sorted oldest-first
+  and each card shows how long it has been waiting (`/api/inbox` returns
+  `since`; stale > 7 days highlighted); every card has **✕ Cancel run**, and
+  the header offers **Cancel stale (N > 7d)** bulk cleanup.
+- **Cancelling a parked run is now terminal** — a run waiting at a gate has no
+  active job, so a cancellation *request* was never honored and the run stayed
+  in the Inbox forever; cancel now finalizes parked runs immediately
+  (status `cancelled`, audited via events).
+- **Cockpit UX: quick start picks real func-specs** — the free-text "Func
+  spec" field (with a hard-coded default) is a select fed from the repo's
+  actual func-specs; free text remains only as a fallback when the repo has
+  none. Overview shows a first-run CTA on an empty workspace.
 - **LiteLLM has no silent default model** — a node without an explicit model
   fails loudly before any provider call, and `validate_pipeline` rejects the
   configuration at save/launch. Pipelines that relied on the silent

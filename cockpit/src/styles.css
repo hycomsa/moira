@@ -112,12 +112,23 @@ button.reject { background: #b62324; border-color: #b62324; color: #fff; }
 
 .run-list { display: flex; flex-direction: column; gap: 2px; }
 .run-row { display: block; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
-.run-row-l1 { display: flex; align-items: center; }
+.run-row-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .run-row-l1 .rtime { margin-left: auto; font-size: 11px; flex: none; }
 .run-row-l1 .rstatus { margin-left: 8px; }
 .run-row-l2 { font-size: 11px; padding-left: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-when { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; margin: -6px 0 10px 2px; }
 .run-when b { color: var(--text); font-weight: 600; }
+.run-row-l1 .rtitle { font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.run-filters .chip { background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 999px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
+.run-filters .chip.on { color: var(--text); border-color: var(--accent); }
+.run-search { width: 100%; box-sizing: border-box; margin-bottom: 6px; background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 5px 9px; font-size: 12px; }
+.copy-id { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.copy-id:hover { color: var(--accent); }
+.inbox-age { font-size: 11px; color: var(--muted); margin-left: 8px; }
+.inbox-age.stale { color: var(--warn, #d29922); }
 .run-row:hover { background: var(--panel2); }
 .run-row.active { background: var(--panel2); outline: 1px solid var(--accent2); }
 .rid { color: var(--text); }
@@ -1117,3 +1128,4 @@ pre.diff { max-height: 360px; overflow: auto; font-size: 11px; line-height: 1.4;
   cursor: help; vertical-align: middle; user-select: none;
 }
 .help:hover { border-color: var(--accent); color: var(--accent); }
+.ov-empty-cta { text-align: center; padding: 18px 8px; }

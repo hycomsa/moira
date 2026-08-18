@@ -8,6 +8,7 @@ export interface RunSummary {
   created_at: number;
   updated_at: number;
   // rollup metrics (added by /api/runs)
+  func?: string;   // the run's human identity: the FUNC/spec it targeted
   usd?: number;
   tokens?: number;
   duration?: number;
@@ -61,6 +62,7 @@ export interface InboxItem {
   message: string;
   node_id: string;
   kind?: "gate" | "failed_node" | "budget";  // failed_node/budget also offer ↻ Retry (ADR-013/017)
+  since?: number;  // when the run started waiting (epoch s) — drives "waiting Xd" + stale sort
   persona?: string;
   audience?: string;
   consumes?: string[];
@@ -272,6 +274,8 @@ export const api = {
     POST(`/api/runs/${id}/reject`, { by, feedback }),
   retry: (id: string, by: string, feedback: string) =>
     POST(`/api/runs/${id}/retry`, { by, feedback }),  // failed node only (ADR-013)
+  cancel: (id: string, reason: string) =>
+    POST(`/api/runs/${id}/cancel`, { by: _user.name, reason }),
   // Evals & quality harness: an evaluation is itself an audited one-node run.
   evalQuality: (run_id: string, model?: string): Promise<EvalResult> =>
     POST("/api/eval", { owner: _user.name, kind: "quality", run_id, model, workspace_id: activeWs }),

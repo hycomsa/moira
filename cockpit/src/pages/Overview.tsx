@@ -202,12 +202,21 @@ export function Overview({ onNavigate }: { onNavigate: (view: string) => void })
             {runs.slice(0, 8).map((r) => (
               <div className="ov-run" key={r.run_id} onClick={() => onNavigate("runs")}>
                 <Dot s={r.status} />
-                <span className="ov-run-pipe">{r.pipeline_id}</span>
+                <span className="ov-run-pipe" title={r.pipeline_id}>{r.func || r.pipeline_id}</span>
                 <Metrics m={r} compact />
                 <span className="ov-run-ago">{ago(r.updated_at || r.created_at)}</span>
               </div>
             ))}
-            {runs.length === 0 && <div className="empty">No runs yet — start one in Runs.</div>}
+            {runs.length === 0 && (
+              <div className="empty ov-empty-cta">
+                <div>This workspace has no runs yet.</div>
+                <div className="muted small" style={{ margin: "4px 0 10px" }}>
+                  Pick a func-spec from the repo and launch your first governed pipeline —
+                  every step lands in the sealed audit.
+                </div>
+                <Button variant="primary" size="sm" onClick={() => onNavigate("runs")}>▶ Start your first run</Button>
+              </div>
+            )}
           </div>
         </section>
 

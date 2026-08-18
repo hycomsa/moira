@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, getWorkspace, approver, type Artifact, type AuditRow, type InboxItem, type RunDetail } from "../api";
+import { ago } from "../time";
 import { FilesDiff, hasDiff } from "../components/FilesDiff";
 import { Metrics } from "../components/Metrics";
 import { Button } from "../components/ui/Button";
@@ -82,6 +83,12 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
       <div className="dc-head">
         <span className={"aud-tag " + (isClient ? "client" : "tech")}>{isClient ? "client gate" : "quality gate"}</span>
         {it.persona && <span className="persona-tag">{it.persona}</span>}
+        {!!it.since && (
+          <span className={"inbox-age" + (Date.now() / 1000 - it.since > 7 * 86400 ? " stale" : "")}
+                title={new Date(it.since * 1000).toLocaleString()}>
+            ⏳ waiting {ago(it.since)}
+          </span>
+        )}
         {it.gate_review?.coverage && (() => {
           const c = it.gate_review!.coverage!;
           const ok = c.ac.total > 0 && c.ac.in_tasks >= c.ac.total;
@@ -196,24 +203,59 @@ function DecisionCard({ it, codePath, onDecided, onOpenRun }: {
         )}
         <Button variant="success" disabled={busy} onClick={() => decide("approve")}>{busy ? "…" : "✓ Approve"}</Button>
         <Button variant="danger" disabled={busy} onClick={() => decide("reject")}>{busy ? "…" : "↩ Reject & rework"}</Button>
+        <Button variant="ghost" disabled={busy} title="Terminally cancel this run (audited) — the decision disappears from the Inbox"
+          onClick={async () => {
+            if (!window.confirm("Cancel this run? Queued work in it is discarded (audited).")) return;
+            setBusy(true);
+            try { await api.cancel(it.run_id, "cancelled from the Inbox"); setMsg("✕ Run cancelled."); onDecided(); }
+            catch (e) { setMsg("⚠ Cancel failed: " + String((e as Error)?.message || e)); }
+            finally { setBusy(false); }
+          }}>✕ Cancel run</Button>
       </div>
       {artifact && <ArtifactModal artifact={artifact} onClose={() => setArtifact(null)} onOpen={viewArtifact} />}
     </div>
   );
 }
 
+const STALE_DAYS = 7;
+
 export function InboxPage({ inbox, onDecided, onOpenRun }: { inbox: InboxItem[]; onDecided: () => void; onOpenRun?: (id: string) => void }) {
   const [codePath, setCodePath] = useState<string | undefined>();
+  const [bulkBusy, setBulkBusy] = useState(false);
   useEffect(() => {
     api.workspaces().then((d) => setCodePath(d.workspaces.find((w) => w.id === getWorkspace())?.code_path || undefined)).catch(() => { /* */ });
   }, []);
+
+  // oldest decisions first — they are the ones rotting
+  const sorted = [...inbox].sort((a, b) => (a.since || 0) - (b.since || 0));
+  const staleCut = Date.now() / 1000 - STALE_DAYS * 86400;
+  const stale = sorted.filter((i) => (i.since || 0) < staleCut);
+
+  const cancelStale = async () => {
+    if (!window.confirm(
+      `Cancel ${stale.length} run(s) waiting longer than ${STALE_DAYS} days?\n` +
+      "Each is cancelled terminally (audited); queued work in them is discarded.")) return;
+    setBulkBusy(true);
+    for (const it of stale) {
+      try { await api.cancel(it.run_id, `stale gate decision (> ${STALE_DAYS}d) — bulk cancel from Inbox`); }
+      catch { /* keep going — one failure must not stop the sweep */ }
+    }
+    setBulkBusy(false);
+    onDecided();
+  };
 
   return (
     <div className="page">
       <div className="inbox-head">
         <h2 style={{ margin: 0 }}>Pending decisions</h2>
         {inbox.length > 0 && <span className="pill-count">{inbox.length}</span>}
-        <span className="muted" style={{ fontSize: 13 }}>human quality gates awaiting your call</span>
+        <span className="muted" style={{ fontSize: 13 }}>human quality gates awaiting your call · oldest first</span>
+        {stale.length > 0 && (
+          <Button variant="ghost" size="sm" disabled={bulkBusy} onClick={cancelStale}
+            title={`Terminally cancel every run whose decision has been waiting > ${STALE_DAYS} days`}>
+            {bulkBusy ? "cancelling…" : `✕ Cancel stale (${stale.length} > ${STALE_DAYS}d)`}
+          </Button>
+        )}
       </div>
       {inbox.length === 0 && (
         <div className="panel glass inbox-empty">
@@ -221,7 +263,7 @@ export function InboxPage({ inbox, onDecided, onOpenRun }: { inbox: InboxItem[];
           <div><b>You're all caught up.</b><br /><span className="muted">No gates waiting — agents are running autonomously.</span></div>
         </div>
       )}
-      {inbox.map((it) => <DecisionCard key={it.run_id} it={it} codePath={codePath} onDecided={onDecided} onOpenRun={onOpenRun} />)}
+      {sorted.map((it) => <DecisionCard key={it.run_id} it={it} codePath={codePath} onDecided={onDecided} onOpenRun={onOpenRun} />)}
     </div>
   );
 }

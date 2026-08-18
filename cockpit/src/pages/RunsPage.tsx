@@ -25,7 +25,11 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [step, setStep] = useState<AuditRow | null>(null);
-  const [funcId, setFuncId] = useState("FUNC-MOIRA-audit-record");
+  const [funcId, setFuncId] = useState("");
+  const [funcs, setFuncs] = useState<{ id: string; title: string }[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [q, setQ] = useState("");
+  const [copied, setCopied] = useState(false);
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
   const [pipelineId, setPipelineId] = useState("");
   const [backend, setBackend] = useState(getUser().backend);
@@ -154,6 +158,9 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
   }, [selected]);
   useEffect(() => {
     api.pipelines().then((d) => { setPipelines(d.pipelines); if (d.pipelines[0]) setPipelineId(d.pipelines[0].id); }).catch(() => { /* */ });
+    // quick-start picks from the repo's real func-specs — a typo'd free-text id
+    // meant launching against a spec that doesn't exist
+    api.funcs().then((d) => { setFuncs(d.funcs); if (d.funcs[0]) setFuncId((f) => f || d.funcs[0].id); }).catch(() => { /* */ });
   }, []);
   useEffect(() => {
     if (!selected) return;
@@ -172,7 +179,16 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
           <h3>New run</h3>
           <Button variant="ghost" style={{ width: "100%" }} onClick={() => setWizard(true)}>✨ Guided run (from repo)</Button>
           <div className="or-sep">or quick start</div>
-          <label>Func spec<input value={funcId} onChange={(e) => setFuncId(e.target.value)} /></label>
+          <label>Func spec
+            {funcs.length > 0 ? (
+              <select value={funcId} onChange={(e) => setFuncId(e.target.value)}>
+                {funcs.map((f) => <option key={f.id} value={f.id} title={f.title}>{f.id}</option>)}
+              </select>
+            ) : (
+              <input value={funcId} onChange={(e) => setFuncId(e.target.value)}
+                     placeholder="no func-specs found in this repo" />
+            )}
+          </label>
           <label>Pipeline
             <select value={pipelineId} onChange={(e) => setPipelineId(e.target.value)}>
               {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -189,17 +205,33 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
         </section>
         <section className="panel">
           <h3>Runs</h3>
+          <div className="run-filters">
+            {(["all", "running", "waiting_gate", "succeeded", "failed"] as const).map((s) => (
+              <button key={s} className={"chip" + (statusFilter === s ? " on" : "")}
+                onClick={() => setStatusFilter(s)}>
+                {s === "waiting_gate" ? "waiting" : s}
+              </button>
+            ))}
+          </div>
+          <input className="run-search" placeholder="filter: func / pipeline / id…"
+                 value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="run-list">
-            {runs.map((r) => (
+            {runs
+              .filter((r) => statusFilter === "all" || r.status === statusFilter
+                || (statusFilter === "failed" && (r.status === "rejected" || r.status === "cancelled")))
+              .filter((r) => !q.trim()
+                || `${r.func || ""} ${r.pipeline_id} ${r.run_id}`.toLowerCase().includes(q.trim().toLowerCase()))
+              .map((r) => (
               <div key={r.run_id} className={"run-row" + (selected === r.run_id ? " active" : "")}
                    onClick={() => { setSelected(r.run_id); setStep(null); }}
                    title={`started ${fmtWhen(r.created_at)}`}>
                 <div className="run-row-l1">
-                  <Dot s={r.status} /><span className="rid">{r.run_id.replace("run-", "")}</span>
+                  <Dot s={r.status} />
+                  <span className="rtitle">{r.func || r.pipeline_id}</span>
                   <span className="rstatus">{r.status}</span>
                   <span className="rtime muted">{ago(r.created_at)}</span>
                 </div>
-                <div className="run-row-l2 muted">{r.pipeline_id}</div>
+                <div className="run-row-l2 muted">{r.func ? `${r.pipeline_id} · ` : ""}{r.run_id.replace("run-", "")}</div>
               </div>
             ))}
             {runs.length === 0 && <div className="empty">No runs yet.</div>}
@@ -213,6 +245,12 @@ export function RunsPage({ onDecided, focusRun }: { onDecided: () => void; focus
             <div className="run-header">
               <Dot s={detail.run.status} /><strong>{detail.pipeline.name}</strong>
               <span className="muted">· {detail.run.run_id}</span>
+              <button className="copy-id" title="Copy run id"
+                onClick={() => { navigator.clipboard?.writeText(detail.run.run_id)
+                  .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
+                  .catch(() => { /* */ }); }}>
+                {copied ? "✓ copied" : "⧉"}
+              </button>
               {(() => {
                 const auditDur = detail.audit.reduce((a, x) => a + (x.duration || 0), 0);
                 const c: Record<string, number> = {};

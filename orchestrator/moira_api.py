@@ -304,6 +304,7 @@ def run_metrics(store: Store, run_id: str) -> dict:
     import collections
     ti = to = 0
     usd = dur = 0.0
+    func = ""
     labels: collections.Counter = collections.Counter()
     for r in store.audit_records(run_id):
         c = r.get("cost") or {}
@@ -312,6 +313,8 @@ def run_metrics(store: Store, run_id: str) -> dict:
         usd += c.get("usd", 0) or 0
         dur += r.get("duration", 0) or 0
         inp = r.get("input") or {}
+        if not func and inp.get("spec_ref"):  # the run's human identity (UX)
+            func = inp["spec_ref"]
         m, be = inp.get("model"), inp.get("backend")
         # Only execution steps carry a backend (gates don't) — skip the rest so a human
         # gate can't dilute the leading model. A "model" that is really a backend name or a
@@ -323,6 +326,7 @@ def run_metrics(store: Store, run_id: str) -> dict:
         if label:
             labels[label] += 1
     return {"usd": round(usd, 4), "tokens": ti + to, "duration": round(dur, 1),
+            "func": func,
             "model": labels.most_common(1)[0][0] if labels else "—"}
 
 
@@ -698,6 +702,7 @@ class Handler(BaseHTTPRequestHandler):
                     items.append({"run_id": r["run_id"], "owner": r["owner"],
                                   "message": w["message"] if w else "",
                                   "node_id": w["node_id"] if w else "",
+                                  "since": w["ts"] if w else r.get("updated_at"),
                                   # gate = re-evaluate (approve/reject); failed_node and budget
                                   # also offer retry (ADR-013; budget after raising it — ADR-017)
                                   "kind": ("failed_node" if w and w["kind"] == "node.escalate"
@@ -1203,6 +1208,16 @@ class Handler(BaseHTTPRequestHandler):
                 store.request_cancellation(run_id, by, reason)
                 store.append_event(Event(run_id=run_id, kind="run.cancel.requested",
                                          message=f"Cancellation requested by {by}: {reason}"))
+                if run.get("status") in ("waiting_gate", "pending"):
+                    # a PARKED run has no active job, so nothing would ever honor the
+                    # request — cancel it terminally right here (audited via events);
+                    # this is how stale gate decisions finally leave the Inbox
+                    store.update_run_status(run_id, "cancelled")
+                    store.honor_cancellation(run_id)
+                    store.append_event(Event(run_id=run_id, kind="run.cancel",
+                                             message=f"Run cancelled while parked ({run.get('status')}) by {by}"))
+                    return self._send(200, {"run_id": run_id, "status": "cancelled",
+                                            "cancellation_requested": True})
                 ensure_embedded_runner()
                 return self._send(200, {"run_id": run_id, "status": run.get("status"),
                                         "cancellation_requested": True})
