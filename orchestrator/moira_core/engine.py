@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from .backends.base import BackendRegistry
+from .backends.contract import CHECK_OUTPUT_CAP  # ST1/ADR-014: one shared tail cap
 from .gates import evaluate_gate
 from .models import (
     AuditRecord, BackendResult, Cost, Event, Finding, GateConfig, GateDecision,
@@ -148,7 +149,8 @@ class Engine:
             for r in {target} | pipeline.descendants(target, deps):
                 state[r] = PENDING
             state[waiting] = PENDING  # the gate re-evaluates after rework
-            context.setdefault("feedback", {})[target] = decision.feedback
+            self._deliver_rework_context(run_id, node.gate or GateConfig(), target,
+                                         context, decision.feedback)
         else:  # approve
             if node.type != NodeType.GATE:
                 # approving an escalated FAILED node means accepting the gap: it is
@@ -251,7 +253,8 @@ class Engine:
                         return RunResult(run_id, Status.REJECTED)
                     for r in {target} | pipeline.descendants(target, deps):
                         state[r] = PENDING
-                    context.setdefault("feedback", {})[target] = decision.feedback
+                    self._deliver_rework_context(run_id, g.gate or GateConfig(), target,
+                                                 context, decision.feedback)
                     self.store.save_run_state(run_id, state)
                     progressed = True
                     break  # restart the ready scan after a reset
@@ -378,11 +381,14 @@ class Engine:
             summary = self._parse_test_counts(out) or ("tests passed" if ok else "tests FAILED")
             tail = out[-800:]
         except Exception as e:  # noqa: BLE001
-            ok, summary, tail = False, f"test runner error: {e}", str(e)
+            ok, summary, tail, out = False, f"test runner error: {e}", str(e), str(e)
         sev = Severity.INFO if ok else Severity.HIGH
         finding = Finding(id=node.id, confidence=1.0, severity=sev,
                           title=("tests passed" if ok else "tests FAILED"), detail=f"{summary}\n{tail}")
-        return BackendResult(output={"check": "test_exec", "passed": ok, "summary": summary, "cmd": cmd},
+        # check_output: the raw evidence a rework prompt may consume (ST1/ADR-014);
+        # persisted into the audit record so the trail carries what the model sees
+        return BackendResult(output={"check": "test_exec", "passed": ok, "summary": summary, "cmd": cmd,
+                                     "check_output": out[-CHECK_OUTPUT_CAP:]},
                              tools_used=[f"test_exec:{shlex.split(cmd)[0]}"],
                              decisions=[f"ran `{cmd}` -> {summary}"], findings=[finding], cost=Cost(), ok=True)
 
@@ -438,16 +444,18 @@ class Engine:
             proc = subprocess.run(shlex.split(cmd), cwd=cwd, capture_output=True,
                                   text=True, timeout=300)
             ok = proc.returncode == 0
-            tail = ((proc.stdout or "") + (proc.stderr or ""))[-800:]
+            out = (proc.stdout or "") + (proc.stderr or "")
+            tail = out[-800:]
         except Exception as e:  # noqa: BLE001
-            ok, tail = False, f"command error: {e}"
+            ok, tail, out = False, f"command error: {e}", f"command error: {e}"
         sev = Severity.INFO if ok else Severity.HIGH
         finding = Finding(id=node.id, title=("check passed" if ok else "check FAILED"),
                           severity=sev, confidence=1.0, detail=tail)
         return BackendResult(
             # "check" marks this result as deterministic — gates.findings_feedback
             # lists such findings before LLM verifier findings on reject (QW1)
-            output={"check": "shell", "cmd": cmd, "passed": ok, "output_tail": tail},
+            output={"check": "shell", "cmd": cmd, "passed": ok, "output_tail": tail,
+                    "check_output": out[-CHECK_OUTPUT_CAP:]},
             tools_used=[f"shell:{shlex.split(cmd)[0] if cmd.strip() else 'true'}"],
             decisions=[f"ran `{cmd}` in {cwd or '.'} -> {'pass' if ok else 'FAIL'}"],
             findings=[finding], cost=Cost(), ok=True,
@@ -550,6 +558,9 @@ class Engine:
         }
         if ex["errors"]:
             rec_input["attempt_errors"] = [e[:500] for e in ex["errors"]]
+        co = context.get("check_output", {}).get(node.id)
+        if co:  # audit fidelity (ST1/ADR-014): the rework prompt carried raw check output
+            rec_input["check_output"] = co
         rec = AuditRecord(
             step_id=new_id("step-"), run_id=run_id, node_id=node.id, node_name=node.name,
             owner=self.owner,
@@ -570,6 +581,31 @@ class Engine:
             self._event(run_id, "node.end",
                         f"[{node.name}] ok ({rec.cost.get('usd', 0):.3f} USD, {rec.duration:.2f}s)"
                         if isinstance(rec.cost, dict) else f"[{node.name}] ok", node.id)
+
+    def _failing_check_output(self, run_id: str, cfg: GateConfig) -> str:
+        """Raw output of the gate's failing consumed checks, derived FROM THE
+        AUDIT TRAIL (like ADR-010's counter), so it works identically inside one
+        drive and across resume()/restart/worker handoff. "" if none."""
+        recs = self.store.audit_records(run_id)
+        parts: list[str] = []
+        for cid in cfg.consumes:
+            last = next((r for r in reversed(recs) if r.get("node_id") == cid), None)
+            out = (last or {}).get("output") or {}
+            if out.get("check") and out.get("passed") is False and out.get("check_output"):
+                parts.append(f"--- {last.get('node_name', cid)}"
+                             f"{' (`' + out['cmd'] + '`)' if out.get('cmd') else ''} ---\n"
+                             f"{out['check_output']}")
+        return "\n\n".join(parts)[-CHECK_OUTPUT_CAP:] if parts else ""
+
+    def _deliver_rework_context(self, run_id: str, cfg: GateConfig, target: str,
+                                context: dict[str, Any], feedback: str) -> None:
+        """One place both reject paths use: the QW1 digest always, plus (opt-in,
+        ST1/ADR-014) the raw failing-check output for the rework target."""
+        context.setdefault("feedback", {})[target] = feedback
+        if cfg.rework_check_output:
+            co = self._failing_check_output(run_id, cfg)
+            if co:
+                context.setdefault("check_output", {})[target] = co
 
     # ---- gate execution ---------------------------------------------------- #
     def _run_gate(self, run_id: str, pipeline: Pipeline, node: Node,

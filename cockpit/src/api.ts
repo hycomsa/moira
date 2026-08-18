@@ -155,7 +155,8 @@ export interface PipelineNodeDef {
   gate?: { mode: string; persona?: string; consumes?: string[]; reviews?: string[];
            audience?: string; high_cutoff?: number; low_cutoff?: number;
            escalate_on_blocking?: boolean;
-           max_loop?: number };  // system-reject budget before forced escalation (ADR-010)
+           max_loop?: number;    // system-reject budget before forced escalation (ADR-010)
+           rework_check_output?: boolean };  // feed failing check output to rework (ADR-014)
 }
 export interface PipelineDefRaw { id: string; name: string; nodes: PipelineNodeDef[]; }
 

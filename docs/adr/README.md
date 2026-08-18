@@ -20,6 +20,7 @@ project's ADRs; they now live with the code they govern (ADR-005/006 P5 hygiene 
 | [011](ADR-011-informed-retry.md) | Informed backend retry — previous errors in the retry prompt + linear backoff (closed quality loop, part 3) | Accepted (implemented) |
 | [012](ADR-012-backend-probes.md) | Backend install/login probes + fail-fast launch gating (asymmetric-TTL cache, unknown never blocks) | Accepted (implemented) |
 | [013](ADR-013-failed-node-retry.md) | "Retry" as the third decision on an escalated failed node; approve-the-gap becomes explicit | Accepted (implemented) |
+| [014](ADR-014-check-output-to-rework.md) | Closed test-fix loop — failing check output feeds the rework prompt (opt-in per gate, audit-derived) | Accepted (implemented) |
 
 > `ADR-007-agentic-engineering-workflow` was left in the `ai-sdlc` framework repo —
 > it describes the engineering workflow, not the Moira product, so its ownership is

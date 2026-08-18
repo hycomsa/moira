@@ -191,6 +191,14 @@ never auto-reject). When the budget is spent, the gate escalates to its persona
 instead — the card says *"rework budget exhausted"* and you decide: approve,
 redirect, or reject once more (your own rejects are never limited) (ADR-010).
 
+For a fully autonomous **test-fix loop**, tick *"Feed failing check output to
+rework"* on the gate (pipeline editor): on reject, the rework step's prompt
+additionally gets the raw tail of the failing `AUTO_CHECK` output (the actual
+failing tests) — so the producer fixes what failed instead of guessing. Off by
+default; combine with `max_loop` and an auto gate without escalation to get
+*"iterate until the suite is green, or a human decides after N tries"*
+(ADR-014).
+
 **Client gate**: a business-language approval for a non-technical client (summary +
 requirements, never code). Tune hybrid thresholds under **Settings**.
 

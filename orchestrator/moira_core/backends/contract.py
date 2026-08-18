@@ -22,6 +22,23 @@ SYSTEM = (
 )
 
 
+# Closed test-fix loop (ST1/ADR-014): how much failing-check output a rework
+# prompt carries. The TAIL is kept — test runners print failures at the end.
+CHECK_OUTPUT_CAP = 20_000
+
+
+def check_output_block(text: str | None) -> str:
+    """Render a failing auto_check's output as a prompt section ("" if none).
+
+    Distinct from REVIEWER FEEDBACK (a judgment digest) and PREVIOUS ATTEMPT
+    FAILED (mechanical errors of attempts that produced nothing): this is raw
+    ground-truth evidence from a real command the produced work failed."""
+    if not text:
+        return ""
+    t = text[-CHECK_OUTPUT_CAP:]
+    return ("=== FAILING CHECK OUTPUT (make these pass) ===\n" + t)
+
+
 # Retry context (QW3/ADR-011): how many previous errors a retry prompt shows,
 # and how much of each survives. Most recent errors matter most — we keep the tail.
 ATTEMPT_ERRORS_SHOWN = 3

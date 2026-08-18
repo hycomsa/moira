@@ -60,6 +60,9 @@ class LiteLLMBackend:
             upstream=context.get("upstream", {}),
             feedback=context.get("feedback", {}).get(node.id, ""),
         )
+        co = contract.check_output_block(context.get("check_output", {}).get(node.id))
+        if co:  # failing-check evidence (ST1/ADR-014) — mirrors ClaudeCodeBackend
+            user += f"\n\n{co}"
         errs = contract.attempt_errors_block(context.get("attempt_errors"))
         if errs:  # informed retry (QW3/ADR-011) — mirrors ClaudeCodeBackend
             user += f"\n\n{errs}"

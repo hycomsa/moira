@@ -423,6 +423,14 @@ export function PipelinesPage({ onOpenAgent }: { onOpenAgent?: (id: string) => v
                       <div className="cfg-sub">system rejects before the gate escalates to a human (0 = never auto-reject)</div>
                     </div>
                   )}
+                  <div className="cfg-sec">
+                    <label className="cfg-label" style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!selProps.gate?.rework_check_output}
+                        onChange={(e) => patch(sel.id, { gate: { ...selProps.gate, mode: selProps.gate?.mode || "auto", rework_check_output: e.target.checked } })} />
+                      Feed failing check output to rework
+                    </label>
+                    <div className="cfg-sub">on reject, the rework step's prompt gets the raw output of the failing checks (closed test-fix loop, ADR-014)</div>
+                  </div>
                   {selProps.gate?.mode === "hybrid" && (
                     <div className="cfg-sec">
                       <div className="cfg-label">Confidence routing</div>

@@ -129,6 +129,9 @@ class GateConfig:
     # into a human escalation (ADR-010). Human rejects don't consume the budget.
     # 0 = never auto-reject (first would-be reject escalates). No "unlimited".
     max_loop: int = 3
+    # Opt-in (ST1/ADR-014): on reject, deliver the failing consumed checks' raw
+    # output tail to the rework target's prompt (closed test-fix loop).
+    rework_check_output: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
