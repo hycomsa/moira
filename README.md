@@ -52,6 +52,9 @@ AI-native SDLC cockpit — a **governed orchestration layer above** best-of-bree
 
 **Status — v0.2 slice · 305 unit/integration tests green (SQLite + live Postgres) · 16 ADRs implemented (see `docs/adr/`) · proven end-to-end on a real project (CSL Driver).**
 
+> What Moira's governance **guarantees — and what it does not** (signing, sandboxing,
+> auth defaults, cost limits): [`docs/SECURITY_BOUNDARIES.md`](docs/SECURITY_BOUNDARIES.md).
+
 ## Getting started
 
 **New here? Read [`USER_GUIDE.md`](USER_GUIDE.md)** — how to run Moira, load/create an AI SDLC repo, create a workspace, define agents, build pipelines, and run them.
