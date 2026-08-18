@@ -25,6 +25,8 @@ project's ADRs; they now live with the code they govern (ADR-005/006 P5 hygiene 
 | [016](ADR-016-process-termination.md) | Escalating, verified process termination — group SIGTERM→SIGKILL, reader unblock, visible verdict | Accepted (implemented) |
 | [017](ADR-017-cost-budgets.md) | Server-enforced cost budgets (run + workspace-month) — settings store, pause-not-kill, governed continue | Accepted (implemented) |
 | [018](ADR-018-prompt-and-metering-hygiene.md) | Prompt & metering hygiene — [UNTRUSTED DATA] framing, fail-loud skills + references delivery, cache-aware tokens | Accepted (implemented) |
+| [019](ADR-019-auth-on-by-default.md) | Auth on by default, end-to-end — process default `local`, Tauri token handshake, CORS narrowing, one-command onboarding | **Proposed (TODO)** |
+| [020](ADR-020-worktree-per-run.md) | Run isolation via git worktrees — `code_path` only, fail-closed, branch as deliverable; unblocks multi-run and ×N variants | **Proposed (design settled)** |
 
 > `ADR-007-agentic-engineering-workflow` was left in the `ai-sdlc` framework repo —
 > it describes the engineering workflow, not the Moira product, so its ownership is
